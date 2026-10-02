@@ -13,6 +13,7 @@
 	},
 	"led": {
 		"test_count": 1000,
+		"led_count": null,
 		"pin": "D18",
 		"brightness": 0.2,
 		"pixel_order": null

@@ -12,6 +12,6 @@ The first run asks for the shared PC token and saves it under `~/.config/3dXmasT
 ./pi_agent/run.sh --hardware
 ```
 
-The agent loads the LED count, GPIO pin, brightness, and selected pixel order from `common/settings.json`. The initial color setup uses the configurable `led.test_count` (1000 by default) to write past the physical strip length so every connected pixel receives data. Use a compatible power supply and common ground, and verify the GPIO wiring before enabling hardware mode.
+The agent loads GPIO pin, brightness, color order, test limit, and calibrated `led.led_count` from `common/settings.json`. Color and length setup tests use `led.test_count` (1000 by default) as their maximum address. Length setup lights one pixel; when the user presses **Done**, the Pi stores the preceding LED number as the calibrated length. Use a compatible power supply and common ground, and verify the GPIO wiring before enabling hardware mode.
 
-The agent checks that it is running on the configured Pi hostname. Run it in an interactive SSH terminal; `Ctrl+Q` stops it, and `Ctrl+F4` works when the terminal forwards that key sequence.
+The agent checks that it is running on the configured Pi hostname. Run it in an interactive SSH terminal. The command center stops it after **Yes** or **Abort**, and the Pi terminal logs the remote request and final shutdown. `Ctrl+Q` also stops it locally; `Ctrl+F4` works when the terminal forwards that key sequence.

@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -86,6 +87,22 @@ def make_handler(settings, token):
             self.send_header("Content-Length", str(len(image)))
             self.end_headers()
             self.wfile.write(image)
+
+        def do_POST(self):
+            if not self._authorized():
+                return
+            if self.path != "/shutdown":
+                self.send_error(404, "Unknown endpoint")
+                return
+
+            payload = json.dumps({"shutdown": "requested"}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            print("Remote shutdown requested by command center.", flush=True)
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
 
         def log_message(self, format_string, *args):
             print(f"{self.address_string()} - {format_string % args}")

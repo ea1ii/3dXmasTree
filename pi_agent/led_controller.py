@@ -6,6 +6,7 @@ class SimulatedStrip:
         self.led_count = led_count
         self.pixel_order = pixel_order
         self.color = (0, 0, 0)
+        self.active_pixels = set()
         print(
             f"Simulating {led_count} LEDs using {pixel_order}; "
             "no hardware will be changed."
@@ -13,8 +14,21 @@ class SimulatedStrip:
 
     def fill(self, color):
         self.color = color
+        self.active_pixels = (
+            set(range(self.led_count)) if color != (0, 0, 0) else set()
+        )
         print(
             f"Simulated {self.led_count} LEDs set to "
+            f"#{color[0]:02X}{color[1]:02X}{color[2]:02X}"
+        )
+
+    def set_one(self, index, color):
+        if not 0 <= index < self.led_count:
+            raise IndexError("LED index is outside the configured test range")
+        self.color = color
+        self.active_pixels = {index} if color != (0, 0, 0) else set()
+        print(
+            f"Simulated LED {index + 1} of {self.led_count} set to "
             f"#{color[0]:02X}{color[1]:02X}{color[2]:02X}"
         )
 
@@ -53,6 +67,13 @@ class NeoPixelStrip:
 
     def fill(self, color):
         self.pixels.fill(color)
+        self.pixels.show()
+
+    def set_one(self, index, color):
+        if not 0 <= index < len(self.pixels):
+            raise IndexError("LED index is outside the configured test range")
+        self.pixels.fill((0, 0, 0))
+        self.pixels[index] = color
         self.pixels.show()
 
     def clear(self):
