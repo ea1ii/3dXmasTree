@@ -2,10 +2,11 @@ import json
 import os
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 
 
 SETTINGS_PATH = Path(__file__).with_name("settings.json")
+_DIRECT_OPENER = build_opener(ProxyHandler({}))
 
 
 class AgentError(RuntimeError):
@@ -46,7 +47,7 @@ def _request(agent_name, endpoint, settings, method="GET", payload=None):
     timeout = settings["agents"].get("timeout_seconds", 5)
 
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with _DIRECT_OPENER.open(request, timeout=timeout) as response:
             return response.read(), response.headers.get_content_type()
     except HTTPError as error:
         message = error.read().decode("utf-8", errors="replace")
