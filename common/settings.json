@@ -1,0 +1,24 @@
+{
+	"agents": {
+		"pi": {
+			"host": "CGlab",
+			"port": 8765
+		},
+		"laptop": {
+			"host": "CG-laptop",
+			"port": 8766
+		},
+		"timeout_seconds": 5,
+		"token_env": "XMAS_AGENT_TOKEN"
+	},
+	"led": {
+		"test_count": 1000,
+		"pin": "D18",
+		"brightness": 0.2,
+		"pixel_order": null
+	},
+	"camera": {
+		"device_index": 0,
+		"jpeg_quality": 85
+	}
+}
