@@ -94,8 +94,10 @@ def make_handler(settings, token):
 
 
 def main():
+    print("Starting laptop camera agent...", flush=True)
     parser = argparse.ArgumentParser(description="Run the laptop webcam agent.")
     args = parser.parse_args()
+    print("Loading shared settings...", flush=True)
     settings = load_settings()
     token_env = settings["agents"].get("token_env", "XMAS_AGENT_TOKEN")
     token = os.environ.get(token_env)
@@ -103,9 +105,21 @@ def main():
         parser.error(f"Set {token_env} before starting the agent")
 
     address = ("0.0.0.0", settings["agents"]["laptop"]["port"])
+    print(f"Binding camera agent to port {address[1]}...", flush=True)
     server = ThreadingHTTPServer(address, make_handler(settings, token))
-    print(f"Laptop camera agent listening on port {address[1]}")
     exit_monitor = start_exit_key_monitor(server.shutdown)
+    if exit_monitor is None:
+        print(
+            f"Running on port {address[1]}; this session has no interactive "
+            "keyboard. Press Ctrl+C to exit.",
+            flush=True,
+        )
+    else:
+        print(
+            f"Running on port {address[1]}; press Ctrl+Q or Ctrl+F4 "
+            "(if forwarded by the terminal) to exit.",
+            flush=True,
+        )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -114,6 +128,7 @@ def main():
         if exit_monitor is not None:
             exit_monitor.stop()
         server.server_close()
+        print("Laptop camera agent stopped.", flush=True)
 
 
 if __name__ == "__main__":
