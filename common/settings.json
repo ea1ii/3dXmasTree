@@ -1,7 +1,7 @@
 {
 	"agents": {
 		"pi": {
-			"host": "CGlab",
+			"host": "CGlabWiFi",
 			"port": 8765
 		},
 		"laptop": {
