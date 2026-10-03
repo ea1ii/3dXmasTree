@@ -25,61 +25,62 @@ def generate_strip_positions(led_count, max_distance_mm, tree_height_mm, frame_h
     generator = random.Random(seed)
     base_z = (frame_height_mm - tree_height_mm) / 2
     base_radius = tree_height_mm * 0.34
-    start_height = tree_height_mm * 0.05
-    vertical_span = min(
-        tree_height_mm * 0.84,
-        max_distance_mm * 0.55 * max(0, led_count - 1),
-    )
-    radial_fraction = generator.uniform(0.68, 0.86)
-    phase = generator.uniform(0, math.tau)
-    direction = generator.choice((-1, 1))
-    angle = phase
+    minimum_height = tree_height_mm * 0.05
+    maximum_height = tree_height_mm * 0.95
+    initial_height = generator.uniform(minimum_height, maximum_height)
+    initial_surface = base_radius * (1 - initial_height / tree_height_mm)
+    initial_radius = initial_surface * math.sqrt(generator.random()) * 0.75
+    initial_angle = generator.uniform(0, math.tau)
+    positions = [
+        (
+            initial_radius * math.cos(initial_angle),
+            initial_radius * math.sin(initial_angle),
+            base_z + initial_height,
+        )
+    ]
 
-    def coordinates(index):
-        progress = index / max(1, led_count - 1)
-        relative_height = start_height + vertical_span * progress
-        z = base_z + relative_height
-        surface_radius = base_radius * (1 - relative_height / tree_height_mm)
-        radial_wobble = 0.035 * math.sin(phase + progress * math.tau * 3)
-        radius = max(0.0, surface_radius * (radial_fraction + radial_wobble))
-        return progress, z, radius
-
-    progress, z, radius = coordinates(0)
-    positions = [(radius * math.cos(angle), radius * math.sin(angle), z)]
+    height_bands = [0.12, 0.88, 0.36, 0.68, 0.22, 0.94, 0.52, 0.78, 0.16, 0.60, 0.32, 0.84]
+    generator.shuffle(height_bands)
+    band_size = max(1, math.ceil(max(1, led_count - 1) / len(height_bands)))
 
     for index in range(1, led_count):
         previous = positions[-1]
-        _, z, radius = coordinates(index)
-        previous_radius = math.hypot(previous[0], previous[1])
-        vertical_delta = z - previous[2]
-        radial_delta = radius - previous_radius
-        desired_step = generator.uniform(0.78, 0.88) * max_distance_mm
-        chord = math.sqrt(
-            max(0.0, desired_step * desired_step - vertical_delta * vertical_delta - radial_delta * radial_delta)
-        )
-        mean_radius = (radius + previous_radius) / 2
-        if mean_radius > 1e-9:
-            angular_step = 2 * math.asin(min(1.0, chord / (2 * mean_radius)))
-            angle += direction * angular_step * generator.uniform(0.90, 1.06)
-        else:
-            angle += direction * generator.uniform(0.0, math.tau)
+        band = height_bands[min((index - 1) // band_size, len(height_bands) - 1)]
+        target_height = minimum_height + band * (maximum_height - minimum_height)
+        accepted = None
 
-        candidate = (radius * math.cos(angle), radius * math.sin(angle), z)
-        distance = math.dist(previous, candidate)
-        if distance > max_distance_mm:
-            allowance = math.sqrt(
-                max(
-                    0.0,
-                    max_distance_mm * max_distance_mm
-                    - vertical_delta * vertical_delta
-                    - radial_delta * radial_delta,
-                )
+        for _attempt in range(2000):
+            direction_x = generator.gauss(0, 1)
+            direction_y = generator.gauss(0, 1)
+            direction_z = generator.gauss(0, 1)
+            vertical_bias = max(
+                -1.0,
+                min(1.0, (base_z + target_height - previous[2]) / (max_distance_mm * 2)),
             )
-            safe_radius = (radius + previous_radius) / 2
-            safe_angle = 2 * math.asin(min(1.0, allowance / (2 * safe_radius)))
-            angle = math.atan2(previous[1], previous[0]) + direction * safe_angle * 0.98
-            candidate = (radius * math.cos(angle), radius * math.sin(angle), z)
-        positions.append(candidate)
+            direction_z += vertical_bias * 2.2
+            direction_length = math.sqrt(
+                direction_x * direction_x
+                + direction_y * direction_y
+                + direction_z * direction_z
+            )
+            step_length = generator.uniform(0.65, 0.90) * max_distance_mm
+            candidate = (
+                previous[0] + direction_x / direction_length * step_length,
+                previous[1] + direction_y / direction_length * step_length,
+                previous[2] + direction_z / direction_length * step_length,
+            )
+            relative_height = candidate[2] - base_z
+            if not minimum_height <= relative_height <= maximum_height:
+                continue
+            surface_radius = base_radius * (1 - relative_height / tree_height_mm) * 0.94
+            if candidate[0] * candidate[0] + candidate[1] * candidate[1] > surface_radius * surface_radius:
+                continue
+            accepted = candidate
+            break
+
+        if accepted is None:
+            raise RuntimeError("Could not generate a randomized LED path inside the tree")
+        positions.append(accepted)
 
     return positions
 
