@@ -1942,7 +1942,7 @@ class MainWindow(QMainWindow):
             return
         try:
             page = PositionCapturePage(self.central_stack, settings, output_directory)
-        except OSError as error:
+        except (OSError, RuntimeError, ValueError) as error:
             QMessageBox.critical(
                 self,
                 "Grab Positions",

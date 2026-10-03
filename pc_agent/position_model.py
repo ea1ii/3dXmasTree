@@ -25,59 +25,61 @@ def generate_strip_positions(led_count, max_distance_mm, tree_height_mm, frame_h
     generator = random.Random(seed)
     base_z = (frame_height_mm - tree_height_mm) / 2
     base_radius = tree_height_mm * 0.34
-    first_z = base_z + tree_height_mm * generator.uniform(0.025, 0.075)
-    first_radius = base_radius * (1 - (first_z - base_z) / tree_height_mm)
-    radius = first_radius * generator.uniform(0.68, 0.9)
-    angle = generator.uniform(0, math.tau)
-    positions = [(radius * math.cos(angle), radius * math.sin(angle), first_z)]
+    start_height = tree_height_mm * 0.05
+    vertical_span = min(
+        tree_height_mm * 0.84,
+        max_distance_mm * 0.55 * max(0, led_count - 1),
+    )
+    radial_fraction = generator.uniform(0.68, 0.86)
+    phase = generator.uniform(0, math.tau)
+    direction = generator.choice((-1, 1))
+    angle = phase
 
-    for _ in range(1, led_count):
-        previous_x, previous_y, previous_z = positions[-1]
-        previous_radius = math.hypot(previous_x, previous_y)
-        previous_angle = math.atan2(previous_y, previous_x)
-        accepted = None
+    def coordinates(index):
+        progress = index / max(1, led_count - 1)
+        relative_height = start_height + vertical_span * progress
+        z = base_z + relative_height
+        surface_radius = base_radius * (1 - relative_height / tree_height_mm)
+        radial_wobble = 0.035 * math.sin(phase + progress * math.tau * 3)
+        radius = max(0.0, surface_radius * (radial_fraction + radial_wobble))
+        return progress, z, radius
 
-        for _attempt in range(4000):
-            step = generator.uniform(0.76, 0.96) * max_distance_mm
-            vertical_step = step * generator.uniform(0.35, 0.78)
-            next_z = previous_z + vertical_step
-            relative_height = next_z - base_z
-            if not 0.02 * tree_height_mm <= relative_height <= 0.96 * tree_height_mm:
-                continue
+    progress, z, radius = coordinates(0)
+    positions = [(radius * math.cos(angle), radius * math.sin(angle), z)]
 
-            surface_radius = base_radius * (1 - relative_height / tree_height_mm)
-            horizontal_limit = math.sqrt(step * step - vertical_step * vertical_step)
-            radial_limit = horizontal_limit * 0.68
-            minimum_radius = max(0.0, previous_radius - radial_limit)
-            maximum_radius = min(surface_radius * 0.97, previous_radius + radial_limit)
-            if minimum_radius > maximum_radius:
-                continue
+    for index in range(1, led_count):
+        previous = positions[-1]
+        _, z, radius = coordinates(index)
+        previous_radius = math.hypot(previous[0], previous[1])
+        vertical_delta = z - previous[2]
+        radial_delta = radius - previous_radius
+        desired_step = generator.uniform(0.78, 0.88) * max_distance_mm
+        chord = math.sqrt(
+            max(0.0, desired_step * desired_step - vertical_delta * vertical_delta - radial_delta * radial_delta)
+        )
+        mean_radius = (radius + previous_radius) / 2
+        if mean_radius > 1e-9:
+            angular_step = 2 * math.asin(min(1.0, chord / (2 * mean_radius)))
+            angle += direction * angular_step * generator.uniform(0.90, 1.06)
+        else:
+            angle += direction * generator.uniform(0.0, math.tau)
 
-            next_radius = generator.uniform(minimum_radius, maximum_radius)
-            radial_change = abs(next_radius - previous_radius)
-            remaining_horizontal = math.sqrt(
-                max(0.0, horizontal_limit * horizontal_limit - radial_change * radial_change)
+        candidate = (radius * math.cos(angle), radius * math.sin(angle), z)
+        distance = math.dist(previous, candidate)
+        if distance > max_distance_mm:
+            allowance = math.sqrt(
+                max(
+                    0.0,
+                    max_distance_mm * max_distance_mm
+                    - vertical_delta * vertical_delta
+                    - radial_delta * radial_delta,
+                )
             )
-            mean_radius = (previous_radius + next_radius) / 2
-            if mean_radius <= 1e-9:
-                maximum_angle = math.tau
-            else:
-                angle_ratio = min(1.0, remaining_horizontal / (2 * mean_radius))
-                maximum_angle = 2 * math.asin(angle_ratio)
-            next_angle = previous_angle + generator.uniform(-maximum_angle, maximum_angle)
-            candidate = (
-                next_radius * math.cos(next_angle),
-                next_radius * math.sin(next_angle),
-                next_z,
-            )
-            distance = math.dist(positions[-1], candidate)
-            if 0.7 * max_distance_mm <= distance <= max_distance_mm:
-                accepted = candidate
-                break
-
-        if accepted is None:
-            raise RuntimeError("Could not generate a valid LED strip path inside the tree")
-        positions.append(accepted)
+            safe_radius = (radius + previous_radius) / 2
+            safe_angle = 2 * math.asin(min(1.0, allowance / (2 * safe_radius)))
+            angle = math.atan2(previous[1], previous[0]) + direction * safe_angle * 0.98
+            candidate = (radius * math.cos(angle), radius * math.sin(angle), z)
+        positions.append(candidate)
 
     return positions
 
