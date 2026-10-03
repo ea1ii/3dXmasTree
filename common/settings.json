@@ -27,5 +27,10 @@
   "animation": {
     "fps": 30.0,
     "seconds_per_animation": 10.0
+  },
+  "simulation": {
+    "tree_luminosity_percent": 100,
+    "tree_transparency_percent": 81,
+    "background_luminosity_percent": 20
   }
 }

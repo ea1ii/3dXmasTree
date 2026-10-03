@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QProgressBar,
     QPushButton,
+    QSlider,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -2083,17 +2084,20 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("3dXmasTree")
         self.resize(1280, 760)
         self.settings = load_settings()
+        self.simulation_settings = self.settings.get("simulation", {})
         led_settings = self.settings["led"]
         configured_count = led_settings.get("led_count") or led_settings.get(
             "capture_test_led_count", 100
         )
         self.led_count = configured_count if isinstance(configured_count, int) and configured_count > 0 else 100
-        self.tree_height_mm = led_settings.get("simulated_tree_height_mm", 1200)
+        self.tree_height_mm = led_settings.get("simulated_tree_height_mm") or 1200
         self.frame_height_mm = self.settings.get("camera", {}).get(
             "frame_height_mm", self.tree_height_mm + 300
         )
-        self.led_positions, self.position_source = self._load_simulator_positions()
+        self.led_positions, self.position_source, self.tree_cone = self._load_simulator_positions()
         self.led_actors = []
+        self.tree_body_actors = []
+        self.tree_scene_actors = []
         self.animation_classes = {}
         self.active_animation = None
         self.last_frame_at = None
@@ -2130,10 +2134,60 @@ class MainWindow(QMainWindow):
         grab_positions_button.clicked.connect(self._grab_positions)
         button_layout.addWidget(grab_positions_button)
 
+        select_tree_data_button = QPushButton("Select Tree Data", button_panel)
+        select_tree_data_button.setMinimumHeight(36)
+        select_tree_data_button.clicked.connect(self._select_tree_data)
+        button_layout.addWidget(select_tree_data_button)
+
         calibrate_button = QPushButton("Calibrate", button_panel)
         calibrate_button.setMinimumHeight(36)
         calibrate_button.clicked.connect(self._calibrate)
         button_layout.addWidget(calibrate_button)
+
+        self.tree_luminosity_label = QLabel(
+            f"Tree luminosity: {self.simulation_settings.get('tree_luminosity_percent', 50)}%",
+            button_panel,
+        )
+        button_layout.addWidget(self.tree_luminosity_label)
+
+        self.tree_luminosity_slider = QSlider(Qt.Orientation.Horizontal, button_panel)
+        self.tree_luminosity_slider.setRange(0, 100)
+        self.tree_luminosity_slider.setValue(
+            int(self.simulation_settings.get("tree_luminosity_percent", 50))
+        )
+        self.tree_luminosity_slider.setToolTip("Adjust tree body luminosity")
+        self.tree_luminosity_slider.valueChanged.connect(self._set_tree_body_luminosity)
+        button_layout.addWidget(self.tree_luminosity_slider)
+
+        self.tree_transparency_label = QLabel(
+            f"Tree transparency: {self.simulation_settings.get('tree_transparency_percent', 58)}%",
+            button_panel,
+        )
+        button_layout.addWidget(self.tree_transparency_label)
+
+        self.tree_transparency_slider = QSlider(Qt.Orientation.Horizontal, button_panel)
+        self.tree_transparency_slider.setRange(0, 100)
+        self.tree_transparency_slider.setValue(
+            int(self.simulation_settings.get("tree_transparency_percent", 58))
+        )
+        self.tree_transparency_slider.setToolTip("Adjust tree body transparency")
+        self.tree_transparency_slider.valueChanged.connect(self._set_tree_body_transparency)
+        button_layout.addWidget(self.tree_transparency_slider)
+
+        self.background_luminosity_label = QLabel(
+            f"Background luminosity: {self.simulation_settings.get('background_luminosity_percent', 0)}%",
+            button_panel,
+        )
+        button_layout.addWidget(self.background_luminosity_label)
+
+        self.background_luminosity_slider = QSlider(Qt.Orientation.Horizontal, button_panel)
+        self.background_luminosity_slider.setRange(0, 100)
+        self.background_luminosity_slider.setValue(
+            int(self.simulation_settings.get("background_luminosity_percent", 0))
+        )
+        self.background_luminosity_slider.setToolTip("Adjust background brightness")
+        self.background_luminosity_slider.valueChanged.connect(self._set_background_luminosity)
+        button_layout.addWidget(self.background_luminosity_slider)
 
         exit_button = QPushButton("Exit", button_panel)
         exit_button.setMinimumHeight(36)
@@ -2148,8 +2202,11 @@ class MainWindow(QMainWindow):
         self.central_stack.addWidget(self.home_page)
         self.setCentralWidget(self.central_stack)
 
-        self.plotter.set_background("#f3f5f7")
+        self.plotter.set_background("#000000")
         self._build_tree_scene()
+        self._set_tree_body_luminosity(self.tree_luminosity_slider.value())
+        self._set_tree_body_transparency(self.tree_transparency_slider.value())
+        self._set_background_luminosity(self.background_luminosity_slider.value())
         self._set_default_3d_view(self.plotter)
         self.refresh_animation_list()
 
@@ -2273,76 +2330,118 @@ class MainWindow(QMainWindow):
             viewport.hide_axes()
 
     def _build_tree_scene(self):
-        tiers = (
-            (0.95, 2.0, 1.0, "#15543E"),
-            (1.75, 2.0, 0.78, "#1B6649"),
-            (2.55, 1.9, 0.56, "#237653"),
+        display_scale = 3.5 / 1200.0
+        tree_height_mm = (
+            self.tree_cone["height_mm"] if self.tree_cone is not None else self.tree_height_mm
         )
-        for center_z, height, radius, color in tiers:
-            self.plotter.add_mesh(
+        scene_scale = tree_height_mm / 1200.0
+        if self.tree_cone is not None:
+            height = self.tree_cone["height_mm"] * display_scale
+            radius = self.tree_cone["base_radius_mm"] * display_scale
+            actor = self._add_tree_mesh(
                 pv.Cone(
-                    center=(0, 0, center_z),
+                    center=(0, 0, height / 2),
                     direction=(0, 0, 1),
                     height=height,
                     radius=radius,
                     resolution=64,
                 ),
-                color=color,
+                color="#0B2819",
+                opacity=0.42,
+                smooth_shading=True,
+            )
+            self.tree_body_actors.append(actor)
+        else:
+            tiers = (
+                (0.95, 2.0, 1.0),
+                (1.75, 2.0, 0.78),
+                (2.55, 1.9, 0.56),
+            )
+            for center_z, height, radius in tiers:
+                actor = self._add_tree_mesh(
+                    pv.Cone(
+                        center=(0, 0, center_z * scene_scale),
+                        direction=(0, 0, 1),
+                        height=height * scene_scale,
+                        radius=radius * scene_scale,
+                        resolution=64,
+                    ),
+                    color="#0B2819",
+                    opacity=0.42,
+                    smooth_shading=True,
+                )
+                self.tree_body_actors.append(actor)
+
+            self._add_tree_mesh(
+                pv.Sphere(
+                    center=(0, 0, 3.66 * scene_scale),
+                    radius=0.16 * scene_scale,
+                    theta_resolution=20,
+                    phi_resolution=16,
+                ),
+                color="#F2C451",
                 smooth_shading=True,
             )
 
-        self.plotter.add_mesh(
+            ground_ring = pv.Disc(
+                center=(0, 0, -0.39 * scene_scale),
+                inner=0.52 * scene_scale,
+                outer=1.55 * scene_scale,
+                normal=(0, 0, 1),
+                r_res=1,
+                c_res=64,
+            )
+            self._add_tree_mesh(ground_ring, color="#14231A")
+
+        self._add_tree_mesh(
             pv.Cylinder(
-                center=(0, 0, -0.14),
+                center=(0, 0, -0.36 * scene_scale),
                 direction=(0, 0, 1),
-                radius=0.46,
-                height=0.48,
+                radius=0.46 * scene_scale,
+                height=0.40 * scene_scale,
                 resolution=48,
             ),
             color="#B94F36",
             smooth_shading=True,
         )
-        self.plotter.add_mesh(
+        self._add_tree_mesh(
             pv.Cylinder(
-                center=(0, 0, 0.10),
+                center=(0, 0, -0.15 * scene_scale),
                 direction=(0, 0, 1),
-                radius=0.49,
-                height=0.08,
+                radius=0.49 * scene_scale,
+                height=0.10 * scene_scale,
                 resolution=48,
             ),
             color="#D16A46",
             smooth_shading=True,
         )
-        self.plotter.add_mesh(
+        self._add_tree_mesh(
             pv.Cylinder(
-                center=(0, 0, 0.57),
+                center=(0, 0, -0.06 * scene_scale),
                 direction=(0, 0, 1),
-                radius=0.12,
-                height=0.96,
+                radius=0.12 * scene_scale,
+                height=0.12 * scene_scale,
                 resolution=24,
             ),
             color="#79523A",
             smooth_shading=True,
         )
-        self.plotter.add_mesh(
-            pv.Sphere(center=(0, 0, 3.66), radius=0.16, theta_resolution=20, phi_resolution=16),
-            color="#F2C451",
-            smooth_shading=True,
-        )
 
-        ground_ring = pv.Disc(
-            center=(0, 0, -0.39),
-            inner=0.52,
-            outer=1.55,
-            normal=(0, 0, 1),
-            r_res=1,
-            c_res=64,
-        )
-        self.plotter.add_mesh(ground_ring, color="#D9E5DE")
+        self._build_led_scene()
 
-        display_scale = 3.5 / self.tree_height_mm
+    def _add_tree_mesh(self, mesh, **options):
+        actor = self.plotter.add_mesh(mesh, **options)
+        self.tree_scene_actors.append(actor)
+        return actor
+
+    def _build_led_scene(self):
+        display_scale = 3.5 / 1200.0
+        rendered_tree_height = (
+            self.tree_cone["height_mm"] if self.tree_cone is not None else self.tree_height_mm
+        )
+        scene_scale = rendered_tree_height / 1200.0
         generated_base_z = (self.frame_height_mm - self.tree_height_mm) / 2
-        led_radius = max(0.018, min(0.045, 0.22 / math.sqrt(self.led_count)))
+        led_radius = max(0.018, min(0.045, 0.22 / math.sqrt(self.led_count))) * scene_scale
         for x, y, z in self.led_positions:
             if self.position_source is None:
                 z -= generated_base_z
@@ -2364,6 +2463,104 @@ class MainWindow(QMainWindow):
             actor.GetProperty().SetAmbient(0.45)
             self.led_actors.append(actor)
 
+    def _select_tree_data(self):
+        frame_root = PROJECT_ROOT / "pc_agent" / "frames"
+        file_path, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Select tree position data",
+            str(frame_root),
+            "Position data (positions_*.json);;JSON files (*.json)",
+        )
+        if not file_path:
+            return
+
+        try:
+            payload = json.loads(Path(file_path).read_text(encoding="utf-8"))
+            positions, tree_cone = self._parse_tree_data(payload)
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            QMessageBox.critical(self, "Select Tree Data", f"Could not load position data: {error}")
+            return
+
+        self._stop_animation()
+        for actor in self.led_actors:
+            self.plotter.remove_actor(actor, render=False)
+        self.led_actors.clear()
+        for actor in self.tree_scene_actors:
+            self.plotter.remove_actor(actor, render=False)
+        self.tree_scene_actors.clear()
+        self.tree_body_actors.clear()
+        self.led_positions = positions
+        self.position_source = Path(file_path)
+        self.tree_cone = tree_cone
+        self.led_count = len(positions)
+        self._build_tree_scene()
+        self._set_tree_body_luminosity(self.tree_luminosity_slider.value())
+        self._set_tree_body_transparency(self.tree_transparency_slider.value())
+        self.position_label.setText(f"{self.led_count} LEDs | {self.position_source.name}")
+        self.plotter.render()
+
+    @staticmethod
+    def _parse_tree_data(payload):
+        if not isinstance(payload, dict):
+            raise ValueError("The selected file must contain a JSON object.")
+        raw_positions = payload.get("positions")
+        if not isinstance(raw_positions, list) or not raw_positions:
+            raise ValueError("The selected file contains no LED positions.")
+        positions = [
+            (float(point["x"]), float(point["y"]), float(point["z"]))
+            for point in raw_positions
+        ]
+        if not all(math.isfinite(value) for point in positions for value in point):
+            raise ValueError("The selected file contains non-finite LED coordinates.")
+
+        raw_cone = payload.get("cone")
+        if not isinstance(raw_cone, dict):
+            raise ValueError("The selected file does not define cone dimensions.")
+        tree_cone = {
+            "height_mm": float(raw_cone["height_mm"]),
+            "base_radius_mm": float(raw_cone["base_radius_mm"]),
+        }
+        if any(
+            not math.isfinite(dimension) or dimension <= 0
+            for dimension in tree_cone.values()
+        ):
+            raise ValueError("Cone dimensions must be finite positive values.")
+        return positions, tree_cone
+
+    def _set_tree_body_luminosity(self, value):
+        self.tree_luminosity_label.setText(f"Tree luminosity: {value}%")
+        brightness = 0.2 + value * 0.016
+        base_color = (11 / 255, 40 / 255, 25 / 255)
+        color = tuple(min(1.0, channel * brightness) for channel in base_color)
+        for actor in self.tree_body_actors:
+            actor.GetProperty().SetColor(*color)
+        self.plotter.render()
+
+    def _set_tree_body_transparency(self, value):
+        self.tree_transparency_label.setText(f"Tree transparency: {value}%")
+        opacity = 1.0 - value / 100.0
+        for actor in self.tree_body_actors:
+            actor.GetProperty().SetOpacity(opacity)
+        self.plotter.render()
+
+    def _set_background_luminosity(self, value):
+        self.background_luminosity_label.setText(f"Background luminosity: {value}%")
+        channel = round(value * 255 / 100)
+        color = f"#{channel:02X}{channel:02X}{channel:02X}"
+        self.plotter.set_background(color)
+        self.plotter.render()
+
+    def _save_visual_settings(self):
+        self.simulation_settings.update(
+            {
+                "tree_luminosity_percent": self.tree_luminosity_slider.value(),
+                "tree_transparency_percent": self.tree_transparency_slider.value(),
+                "background_luminosity_percent": self.background_luminosity_slider.value(),
+            }
+        )
+        self.settings["simulation"] = self.simulation_settings
+        save_settings(self.settings)
+
     def _load_simulator_positions(self):
         frame_root = PROJECT_ROOT / "pc_agent" / "frames"
         position_files = sorted(
@@ -2374,15 +2571,10 @@ class MainWindow(QMainWindow):
         for path in position_files:
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
-                positions = payload["positions"]
+                positions, tree_cone = self._parse_tree_data(payload)
                 if len(positions) != self.led_count:
                     continue
-                parsed = [
-                    (float(point["x"]), float(point["y"]), float(point["z"]))
-                    for point in positions
-                ]
-                if all(math.isfinite(value) for point in parsed for value in point):
-                    return parsed, path
+                return positions, path, tree_cone
             except (OSError, ValueError, TypeError, KeyError):
                 continue
 
@@ -2393,7 +2585,7 @@ class MainWindow(QMainWindow):
             self.tree_height_mm,
             self.frame_height_mm,
         )
-        return positions, None
+        return positions, None, None
 
     def _build_animation_panel(self):
         panel = QWidget(self.home_page)
@@ -2430,6 +2622,23 @@ class MainWindow(QMainWindow):
         rate_row.addWidget(self.animation_rate, 1)
         layout.addLayout(rate_row)
 
+        duration_row = QHBoxLayout()
+        duration_row.addWidget(QLabel("Effect duration"))
+        self.effect_duration = QDoubleSpinBox(panel)
+        self.effect_duration.setRange(0.1, 3600.0)*
+        self.effect_duration.setDecimals(1)
+        self.effect_duration.setSingleStep(0.5)
+        self.effect_duration.setSuffix(" s")
+        self.effect_duration.setValue(
+            float(self.settings.get("animation", {}).get("seconds_per_animation", 10.0))
+        )
+        self.effect_duration.setToolTip(
+            "Saved to common/settings.json; sync the file and restart the Pi to apply."
+        )
+        self.effect_duration.valueChanged.connect(self._save_effect_duration)
+        duration_row.addWidget(self.effect_duration, 1)
+        layout.addLayout(duration_row)
+
         controls = QHBoxLayout()
         self.play_button = QPushButton("Play", panel)
         self.stop_button = QPushButton("Stop", panel)
@@ -2447,13 +2656,13 @@ class MainWindow(QMainWindow):
         self.animation_status.setWordWrap(True)
         layout.addWidget(self.animation_status)
 
-        position_label = QLabel(
+        self.position_label = QLabel(
             f"{self.led_count} LEDs | "
             f"{self.position_source.name if self.position_source else 'generated positions'}",
             panel,
         )
-        position_label.setWordWrap(True)
-        layout.addWidget(position_label)
+        self.position_label.setWordWrap(True)
+        layout.addWidget(self.position_label)
         self._update_animation_controls()
         return panel
 
@@ -2509,13 +2718,30 @@ class MainWindow(QMainWindow):
         if self.animation_timer.isActive():
             self.animation_timer.setInterval(max(1, round(1000 / self.animation_fps)))
 
+    def _save_effect_duration(self, duration_seconds):
+        try:
+            settings = load_settings()
+            settings.setdefault("animation", {})["seconds_per_animation"] = float(
+                duration_seconds
+            )
+            save_settings(settings)
+        except (OSError, ValueError, TypeError) as error:
+            QMessageBox.warning(
+                self,
+                "Effect Duration",
+                f"Could not save the Pi effect duration: {error}",
+            )
+            return
+        self.settings = settings
+        self.simulation_settings = settings.get("simulation", {})
+
     def _initialise_selected_animation(self):
         item = self.animation_list.currentItem()
         if item is None:
             return False
         animation_class = self.animation_classes[item.data(Qt.ItemDataRole.UserRole)]
         animation = animation_class()
-        animation.initialise(self.led_count, {})
+        animation.initialise(self.led_count, {"positions": self.led_positions})
         self.active_animation = animation
         self.frame_number = 0
         return True
@@ -2602,6 +2828,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._stop_animation()
+        try:
+            self._save_visual_settings()
+        except OSError as error:
+            QMessageBox.warning(self, "Settings", f"Could not save display settings: {error}")
         super().closeEvent(event)
 
     def _setup_color(self):

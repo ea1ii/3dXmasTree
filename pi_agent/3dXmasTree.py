@@ -69,12 +69,48 @@ def validate_frame(frame, led_count):
     return validated
 
 
-def run_animation(animation_class, strip, led_count, duration_seconds, fps, stop_event):
+def load_animation_positions(led_count):
+    frame_root = PROJECT_ROOT / "pc_agent" / "frames"
+    position_files = sorted(
+        frame_root.glob("*/positions_*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for path in position_files:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            raw_positions = payload["positions"]
+            if len(raw_positions) != led_count:
+                continue
+            ordered_positions = sorted(
+                raw_positions,
+                key=lambda point: int(point.get("index", 0)),
+            )
+            positions = [
+                (float(point["x"]), float(point["y"]), float(point["z"]))
+                for point in ordered_positions
+            ]
+            if all(math.isfinite(value) for point in positions for value in point):
+                return positions
+        except (OSError, ValueError, TypeError, KeyError):
+            continue
+    return None
+
+
+def run_animation(
+    animation_class,
+    strip,
+    led_count,
+    duration_seconds,
+    fps,
+    stop_event,
+    animation_parameters=None,
+):
     animation = animation_class()
     initialized = False
     frames_rendered = 0
     try:
-        animation.initialise(led_count, {})
+        animation.initialise(led_count, animation_parameters or {})
         initialized = True
         started_at = time.monotonic()
         previous_frame_at = started_at
@@ -157,6 +193,7 @@ def main():
             parser.error("Calibrate and save led.led_count before using --hardware")
     else:
         led_count = led_count or led_settings.get("capture_test_led_count", 100)
+    animation_positions = load_animation_positions(led_count)
     pixel_order = led_settings.get("pixel_order") or "GRB"
 
     if args.hardware:
@@ -196,6 +233,7 @@ def main():
                     seconds_per_animation,
                     fps,
                     stop_event,
+                    {"positions": animation_positions} if animation_positions else None,
                 )
                 elapsed = time.monotonic() - started_at
                 if frames_rendered:
