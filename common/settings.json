@@ -17,6 +17,8 @@
     "simulated_tree_height_mm": 1200
   },
   "camera": {
+    "device_index": 0,
+    "jpeg_quality": 85,
     "frame_height_mm": 1500
   },
   "calibration": {

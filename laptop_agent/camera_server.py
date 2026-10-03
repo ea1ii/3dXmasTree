@@ -31,7 +31,9 @@ class Webcam:
         self.cv2 = cv2
         self.camera_settings = camera_settings
         self.lock = threading.Lock()
-        self.capture = cv2.VideoCapture(camera_settings["device_index"])
+        device_index = camera_settings.get("device_index", 0)
+        self.jpeg_quality = camera_settings.get("jpeg_quality", 85)
+        self.capture = cv2.VideoCapture(device_index)
         if not self.capture.isOpened():
             self.capture.release()
             self.capture = None
@@ -47,7 +49,7 @@ class Webcam:
             success, encoded = self.cv2.imencode(
                 ".jpg",
                 frame,
-                [self.cv2.IMWRITE_JPEG_QUALITY, self.camera_settings["jpeg_quality"]],
+                [self.cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality],
             )
             if not success:
                 raise RuntimeError("Could not encode the webcam image")
