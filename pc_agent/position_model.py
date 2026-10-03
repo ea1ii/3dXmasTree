@@ -27,17 +27,7 @@ def generate_strip_positions(led_count, max_distance_mm, tree_height_mm, frame_h
     base_radius = tree_height_mm * 0.34
     minimum_height = tree_height_mm * 0.05
     maximum_height = tree_height_mm * 0.95
-    initial_height = generator.uniform(minimum_height, maximum_height)
-    initial_surface = base_radius * (1 - initial_height / tree_height_mm)
-    initial_radius = initial_surface * math.sqrt(generator.random()) * 0.75
-    initial_angle = generator.uniform(0, math.tau)
-    positions = [
-        (
-            initial_radius * math.cos(initial_angle),
-            initial_radius * math.sin(initial_angle),
-            base_z + initial_height,
-        )
-    ]
+    positions = [(0.0, 0.0, base_z)]
 
     height_bands = [0.12, 0.88, 0.36, 0.68, 0.22, 0.94, 0.52, 0.78, 0.16, 0.60, 0.32, 0.84]
     generator.shuffle(height_bands)
@@ -124,7 +114,7 @@ def add_synthetic_led_glow(
 
     image_height, image_width = pixels.shape[:2]
     center_x, center_y = pixel_position
-    radius = max(4, round(0.42 * max_led_distance_mm / frame_height_mm * image_height))
+    radius = max(4, round(0.525 * max_led_distance_mm / frame_height_mm * image_height))
     left = max(0, center_x - radius)
     right = min(image_width, center_x + radius + 1)
     top = max(0, center_y - radius)
@@ -142,9 +132,10 @@ def add_synthetic_led_glow(
     angle = np.arctan2(dy, dx)
     edge_warp = (
         1.0
-        + 0.13 * np.sin(3 * angle + seed)
-        + 0.08 * np.sin(5 * angle - seed * 0.7)
-        + 0.04 * np.sin(7 * angle + seed * 0.3)
+        + 0.20 * np.sin(2 * angle + seed)
+        + 0.13 * np.sin(5 * angle - seed * 0.7)
+        + 0.09 * np.sin(9 * angle + seed * 0.3)
+        + 0.05 * np.sin(13 * angle - seed * 0.2)
     )
     normalized_distance = distance / (radius * edge_warp)
     inside_blob = normalized_distance <= 1.35

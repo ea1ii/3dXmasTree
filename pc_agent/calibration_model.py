@@ -1,4 +1,5 @@
 import json
+import math
 import re
 from pathlib import Path
 
@@ -113,26 +114,83 @@ def _pixels_to_world(view, detection, frame_height_mm):
 def constrain_max_spacing(points, max_distance_mm):
     if max_distance_mm <= 0:
         raise ValueError("max_distance_mm must be positive")
-    adjusted = []
-    for point in points:
-        candidate = {key: point[key] for key in ("index", "x", "y", "z", "valid", "match_error_mm", "warnings")}
-        candidate["adjusted"] = False
-        if adjusted:
-            previous = adjusted[-1]
+    adjusted = [
+        {
+            key: point[key]
+            for key in ("index", "x", "y", "z", "valid", "match_error_mm", "warnings")
+        }
+        for point in points
+    ]
+    for candidate, point in zip(adjusted, points):
+        candidate["adjusted"] = bool(point.get("adjusted", False))
+
+    if not adjusted:
+        return adjusted
+
+    anchor = min(
+        range(len(adjusted)),
+        key=lambda position: (adjusted[position]["z"], adjusted[position]["index"]),
+    )
+    for step in (1, -1):
+        positions = range(anchor + 1, len(adjusted)) if step == 1 else range(anchor - 1, -1, -1)
+        for position in positions:
+            candidate = adjusted[position]
+            parent = adjusted[position - step]
             delta = np.array(
-                (candidate["x"] - previous["x"], candidate["y"] - previous["y"], candidate["z"] - previous["z"]),
+                (
+                    candidate["x"] - parent["x"],
+                    candidate["y"] - parent["y"],
+                    candidate["z"] - parent["z"],
+                ),
                 dtype=float,
             )
             distance = float(np.linalg.norm(delta))
             if distance > max_distance_mm:
-                corrected = np.array((previous["x"], previous["y"], previous["z"])) + delta * (max_distance_mm / distance)
+                corrected = np.array((parent["x"], parent["y"], parent["z"])) + delta * (
+                    max_distance_mm / distance
+                )
                 candidate["x"], candidate["y"], candidate["z"] = map(float, corrected)
                 candidate["adjusted"] = True
                 candidate["warnings"] = list(candidate["warnings"]) + [
                     f"Moved to satisfy {max_distance_mm:g} mm maximum spacing"
                 ]
-        adjusted.append(candidate)
     return adjusted
+
+
+def guess_cone_fit(points, default_tree_height_mm):
+    if not points or default_tree_height_mm <= 0:
+        raise ValueError("Points and a positive default tree height are required")
+
+    origin = min(points, key=lambda point: (point["z"], point["index"]))
+    normalized = [
+        (
+            point["x"] - origin["x"],
+            point["y"] - origin["y"],
+            point["z"] - origin["z"],
+        )
+        for point in points
+    ]
+    maximum_z = max(point[2] for point in normalized)
+    height_guess = max(default_tree_height_mm * 0.5, maximum_z / 0.92)
+    height_scale = min(3.0, max(0.25, height_guess / default_tree_height_mm))
+
+    base_radius = default_tree_height_mm * 0.34
+    radius_ratios = []
+    for x, y, z in normalized[1:]:
+        fraction = z / height_guess
+        if 0.04 <= fraction <= 0.90:
+            expected_radius = base_radius * (1 - fraction)
+            if expected_radius > 0:
+                radius_ratios.append(math.hypot(x, y) / expected_radius)
+    width_scale = min(
+        3.0,
+        max(0.25, (max(radius_ratios) * 1.05) if radius_ratios else 1.0),
+    )
+    return {
+        "height_scale": height_scale,
+        "width_scale": width_scale,
+        "axis_offset": (0.0, 0.0, 0.0),
+    }
 
 
 def positions_from_detections(
@@ -147,10 +205,10 @@ def positions_from_detections(
 
     points = []
     for index in led_indices:
-        front_x, front_y, front_z = _pixels_to_world("front", detections["front"][index], frame_height_mm)
-        back_x, back_y, back_z = _pixels_to_world("back", detections["back"][index], frame_height_mm)
-        left_x, left_y, left_z = _pixels_to_world("left", detections["left"][index], frame_height_mm)
-        right_x, right_y, right_z = _pixels_to_world("right", detections["right"][index], frame_height_mm)
+        _, front_y, front_z = _pixels_to_world("front", detections["front"][index], frame_height_mm)
+        _, back_y, back_z = _pixels_to_world("back", detections["back"][index], frame_height_mm)
+        left_x, _, left_z = _pixels_to_world("left", detections["left"][index], frame_height_mm)
+        right_x, _, right_z = _pixels_to_world("right", detections["right"][index], frame_height_mm)
 
         y_error = abs(front_y - back_y)
         x_error = abs(left_x - right_x)
@@ -177,6 +235,16 @@ def positions_from_detections(
             }
         )
 
+    if not points:
+        return []
+
+    base_point = min(points, key=lambda point: (point["z"], point["index"]))
+    base_x, base_y, base_z = base_point["x"], base_point["y"], base_point["z"]
+    for point in points:
+        point["x"] -= base_x
+        point["y"] -= base_y
+        point["z"] = max(0.0, point["z"] - base_z)
+
     return constrain_max_spacing(points, max_distance_mm)
 
 
@@ -201,10 +269,11 @@ def calibrate_frame_set(
     return points, detections
 
 
-def save_positions(path, points, source_timestamp):
+def save_positions(path, points, source_timestamp, cone_parameters=None):
     payload = {
         "source_timestamp": source_timestamp,
         "units": "mm",
+        "cone": cone_parameters or {},
         "positions": [
             {
                 "index": point["index"],
