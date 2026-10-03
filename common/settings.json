@@ -14,13 +14,18 @@
 	"led": {
 		"test_count": 1000,
 		"led_count": null,
-		"capture_test_led_count": 5,
+		"capture_test_led_count": 10,
+		"maxLEDdist": 120,
+		"simulated_tree_height_mm": 1200,
 		"pin": "D18",
 		"brightness": 0.2,
 		"pixel_order": null
 	},
 	"camera": {
 		"device_index": 0,
-		"jpeg_quality": 85
+		"jpeg_quality": 85,
+		"frame_height_mm": 1500,
+		"simulate_led_lights": true,
+		"synthetic_background_level": 0.02
 	}
 }

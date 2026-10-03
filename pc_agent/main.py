@@ -37,6 +37,7 @@ from pyvistaqt import QtInteractor
 
 
 from common.agent_client import AgentError, load_settings, request_image, request_json, save_settings
+from position_model import generate_strip_positions, render_led_frame
 
 
 class OperationWorker(QThread):
@@ -768,8 +769,24 @@ class PositionCapturePage(QDialog):
         super().__init__(parent)
         self.settings = settings
         self.output_directory = output_directory
-        self.output_directory.mkdir(parents=True, exist_ok=False)
         self.led_count = settings["led"].get("capture_test_led_count", 5)
+        led_settings = settings["led"]
+        camera_settings = settings["camera"]
+        self.max_led_distance_mm = led_settings["maxLEDdist"]
+        self.frame_height_mm = camera_settings["frame_height_mm"]
+        self.simulate_led_lights = camera_settings.get("simulate_led_lights", True)
+        self.synthetic_background_level = camera_settings.get(
+            "synthetic_background_level", 0.02
+        )
+        self.led_positions = generate_strip_positions(
+            self.led_count,
+            self.max_led_distance_mm,
+            led_settings.get("simulated_tree_height_mm", 1200),
+            self.frame_height_mm,
+        )
+        self.output_directory.mkdir(parents=True, exist_ok=False)
+        self.model_plotter = None
+        self.led_actors = []
         self.worker = None
         self.pending_result = None
         self.pending_error = None
@@ -804,11 +821,24 @@ class PositionCapturePage(QDialog):
         self.progress_bar.setValue(0)
         layout.addWidget(self.progress_bar)
 
+        preview_layout = QHBoxLayout()
+
+        if self.simulate_led_lights:
+            model_container = QWidget(self)
+            model_layout = QVBoxLayout(model_container)
+            model_layout.setContentsMargins(0, 0, 0, 0)
+            model_layout.addWidget(QLabel("Synthetic tree and LED strip"))
+            self.model_plotter = QtInteractor(model_container)
+            model_layout.addWidget(self.model_plotter, 1)
+            self._build_position_preview()
+            preview_layout.addWidget(model_container, 1)
+
         self.image_label = QLabel("No capture yet")
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setMinimumSize(520, 360)
+        self.image_label.setMinimumSize(360, 300)
         self.image_label.setStyleSheet("background: #20242a; color: white;")
-        layout.addWidget(self.image_label, 1)
+        preview_layout.addWidget(self.image_label, 1)
+        layout.addLayout(preview_layout, 1)
 
         self.file_label = QLabel(str(output_directory))
         self.file_label.setWordWrap(True)
@@ -826,6 +856,86 @@ class PositionCapturePage(QDialog):
         layout.addLayout(button_layout)
 
         self._show_view_prompt()
+
+    def _build_position_preview(self):
+        tree_height = self.settings["led"].get("simulated_tree_height_mm", 1200)
+        frame_height = self.frame_height_mm
+        base_z = (frame_height - tree_height) / 2
+        base_radius = tree_height * 0.34
+        self.model_plotter.set_background("#17221f")
+
+        tiers = (
+            (base_z + tree_height * 0.30, tree_height * 0.60, base_radius, "#4A9A70"),
+            (base_z + tree_height * 0.53, tree_height * 0.58, base_radius * 0.76, "#3F8B65"),
+            (base_z + tree_height * 0.75, tree_height * 0.48, base_radius * 0.52, "#347D5A"),
+        )
+        for center_z, height, radius, color in tiers:
+            self.model_plotter.add_mesh(
+                pv.Cone(
+                    center=(0, 0, center_z),
+                    direction=(0, 0, 1),
+                    height=height,
+                    radius=radius,
+                    resolution=48,
+                ),
+                color=color,
+                opacity=0.28,
+                smooth_shading=True,
+            )
+
+        self.model_plotter.add_mesh(
+            pv.Cylinder(
+                center=(0, 0, base_z + tree_height * 0.08),
+                direction=(0, 0, 1),
+                radius=base_radius * 0.08,
+                height=tree_height * 0.16,
+                resolution=24,
+            ),
+            color="#765438",
+            opacity=0.75,
+        )
+        self.model_plotter.add_mesh(
+            pv.Sphere(
+                center=(0, 0, base_z + tree_height * 0.98),
+                radius=tree_height * 0.035,
+                theta_resolution=16,
+                phi_resolution=12,
+            ),
+            color="#F2C451",
+            smooth_shading=True,
+        )
+
+        for start, end in zip(self.led_positions, self.led_positions[1:]):
+            link = pv.Line(start, end).tube(radius=max(2.5, self.max_led_distance_mm * 0.035))
+            self.model_plotter.add_mesh(link, color="#D9B967", opacity=0.95)
+
+        for position in self.led_positions:
+            actor = self.model_plotter.add_mesh(
+                pv.Sphere(
+                    center=position,
+                    radius=max(14, self.max_led_distance_mm * 0.16),
+                    theta_resolution=16,
+                    phi_resolution=12,
+                ),
+                color="#83B8A0",
+                smooth_shading=True,
+            )
+            self.led_actors.append(actor)
+
+        self.model_plotter.add_axes()
+        self.model_plotter.view_isometric()
+        self.model_plotter.reset_camera()
+
+    def _highlight_model_led(self, led_number):
+        for index, actor in enumerate(self.led_actors, start=1):
+            if index == led_number:
+                actor.GetProperty().SetColor(1.0, 0.93, 0.62)
+                actor.GetProperty().SetAmbient(0.55)
+            else:
+                actor.GetProperty().SetColor(0.43, 0.68, 0.57)
+                actor.GetProperty().SetAmbient(0.12)
+        if self.model_plotter is not None:
+            self.model_plotter.render()
 
     def _show_view_prompt(self):
         view = self.VIEWS[self.view_index]
@@ -915,6 +1025,7 @@ class PositionCapturePage(QDialog):
             )
             return
         self.current_led = status["current_led"]
+        self._highlight_model_led(self.current_led)
         self._capture_current_led()
 
     def _capture_current_led(self):
@@ -925,6 +1036,16 @@ class PositionCapturePage(QDialog):
 
         def capture_and_save():
             image = request_image("laptop", "/capture", self.settings)
+            if self.simulate_led_lights:
+                image = render_led_frame(
+                    image,
+                    self.led_positions[led_number - 1],
+                    view,
+                    self.max_led_distance_mm,
+                    self.frame_height_mm,
+                    self.synthetic_background_level,
+                    seed=self.view_index * self.led_count + led_number,
+                )
             temporary_path = image_path.with_suffix(".jpg.tmp")
             temporary_path.write_bytes(image)
             os.replace(temporary_path, image_path)
@@ -976,6 +1097,7 @@ class PositionCapturePage(QDialog):
 
     def _led_advanced(self, status):
         self.current_led = status["current_led"]
+        self._highlight_model_led(self.current_led)
         self._capture_current_led()
 
     def _stop_view(self):
