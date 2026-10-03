@@ -1,6 +1,6 @@
 # Laptop camera agent
 
-The laptop agent returns a JPEG snapshot from the configured webcam when the PC requests one.
+The laptop agent opens the configured webcam once at startup and returns JPEG snapshots when the PC requests them. It releases the camera when the agent stops.
 
 From PowerShell at the repository root, run:
 

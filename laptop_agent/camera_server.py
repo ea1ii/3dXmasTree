@@ -19,35 +19,48 @@ if __name__ == "__main__":
     require_platform("laptop")
 
 
-def capture_jpeg(settings):
-    try:
-        import cv2
-    except ImportError as error:
-        raise RuntimeError(
-            "Install laptop_agent/requirements.txt to enable webcam capture"
-        ) from error
+class Webcam:
+    def __init__(self, camera_settings):
+        try:
+            import cv2
+        except ImportError as error:
+            raise RuntimeError(
+                "Install laptop_agent/requirements.txt to enable webcam capture"
+            ) from error
 
-    camera_settings = settings["camera"]
-    camera = cv2.VideoCapture(camera_settings["device_index"])
-    try:
-        if not camera.isOpened():
+        self.cv2 = cv2
+        self.camera_settings = camera_settings
+        self.lock = threading.Lock()
+        self.capture = cv2.VideoCapture(camera_settings["device_index"])
+        if not self.capture.isOpened():
+            self.capture.release()
+            self.capture = None
             raise RuntimeError("Could not open the configured webcam")
-        success, frame = camera.read()
-        if not success:
-            raise RuntimeError("The webcam did not return an image")
-        success, encoded = cv2.imencode(
-            ".jpg",
-            frame,
-            [cv2.IMWRITE_JPEG_QUALITY, camera_settings["jpeg_quality"]],
-        )
-        if not success:
-            raise RuntimeError("Could not encode the webcam image")
-        return encoded.tobytes()
-    finally:
-        camera.release()
+
+    def capture_jpeg(self):
+        with self.lock:
+            if self.capture is None:
+                raise RuntimeError("The webcam is closed")
+            success, frame = self.capture.read()
+            if not success:
+                raise RuntimeError("The webcam did not return an image")
+            success, encoded = self.cv2.imencode(
+                ".jpg",
+                frame,
+                [self.cv2.IMWRITE_JPEG_QUALITY, self.camera_settings["jpeg_quality"]],
+            )
+            if not success:
+                raise RuntimeError("Could not encode the webcam image")
+            return encoded.tobytes()
+
+    def close(self):
+        with self.lock:
+            if self.capture is not None:
+                self.capture.release()
+                self.capture = None
 
 
-def make_handler(settings, token):
+def make_handler(token, webcam):
     class Handler(BaseHTTPRequestHandler):
         def _authorized(self):
             supplied = self.headers.get("Authorization", "")
@@ -72,7 +85,7 @@ def make_handler(settings, token):
                 return
 
             try:
-                image = capture_jpeg(settings)
+                image = webcam.capture_jpeg()
             except RuntimeError as error:
                 payload = json.dumps({"error": str(error)}).encode("utf-8")
                 self.send_response(503)
@@ -122,29 +135,40 @@ def main():
         parser.error(f"Set {token_env} before starting the agent")
 
     address = ("0.0.0.0", settings["agents"]["laptop"]["port"])
-    print(f"Binding camera agent to port {address[1]}...", flush=True)
-    server = ThreadingHTTPServer(address, make_handler(settings, token))
-    exit_monitor = start_exit_key_monitor(server.shutdown)
-    if exit_monitor is None:
-        print(
-            f"Running on port {address[1]}; this session has no interactive "
-            "keyboard. Press Ctrl+C to exit.",
-            flush=True,
-        )
-    else:
-        print(
-            f"Running on port {address[1]}; press Ctrl+Q or Ctrl+F4 "
-            "(if forwarded by the terminal) to exit.",
-            flush=True,
-        )
+    print("Opening webcam...", flush=True)
     try:
+        webcam = Webcam(settings["camera"])
+    except RuntimeError as error:
+        parser.error(str(error))
+
+    print(f"Binding camera agent to port {address[1]}...", flush=True)
+    server = None
+    exit_monitor = None
+    try:
+        server = ThreadingHTTPServer(address, make_handler(token, webcam))
+        exit_monitor = start_exit_key_monitor(server.shutdown)
+        if exit_monitor is None:
+            print(
+                f"Running on port {address[1]}; this session has no interactive "
+                "keyboard. Press Ctrl+C to exit.",
+                flush=True,
+            )
+        else:
+            print(
+                f"Running on port {address[1]}; press Ctrl+Q or Ctrl+F4 "
+                "(if forwarded by the terminal) to exit.",
+                flush=True,
+            )
         server.serve_forever()
     except KeyboardInterrupt:
         print()
     finally:
         if exit_monitor is not None:
             exit_monitor.stop()
-        server.server_close()
+        if server is not None:
+            server.server_close()
+        webcam.close()
+        print("Webcam released.", flush=True)
         print("Laptop camera agent stopped.", flush=True)
 
 
