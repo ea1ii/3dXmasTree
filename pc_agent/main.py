@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
+import math
+import random
 import sys
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -11,6 +14,7 @@ from common.Xmas_shared import require_platform
 if __name__ == "__main__":
     require_platform("pc")
 
+import pyvista as pv
 from PySide6.QtGui import QAction, QKeySequence, QPixmap
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -795,7 +799,16 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_stack)
 
         self.plotter.set_background("#f3f5f7")
+        self.orbiters = []
+        self._build_tree_scene()
+        self._update_orbiter_positions(0)
+        self.plotter.view_isometric()
         self.plotter.reset_camera()
+
+        self.animation_timer = QTimer(self)
+        self.animation_timer.setInterval(33)
+        self.animation_timer.timeout.connect(self._animate_orbiters)
+        self.animation_start = time.monotonic()
 
         toolbar = QToolBar("Main", self)
         toolbar.setMovable(False)
@@ -836,6 +849,124 @@ class MainWindow(QMainWindow):
             self.plotter.show_axes()
         else:
             self.plotter.hide_axes()
+
+    def _build_tree_scene(self):
+        tiers = (
+            (0.95, 2.0, 1.0, "#15543E"),
+            (1.75, 2.0, 0.78, "#1B6649"),
+            (2.55, 1.9, 0.56, "#237653"),
+        )
+        for center_z, height, radius, color in tiers:
+            self.plotter.add_mesh(
+                pv.Cone(
+                    center=(0, 0, center_z),
+                    direction=(0, 0, 1),
+                    height=height,
+                    radius=radius,
+                    resolution=64,
+                ),
+                color=color,
+                smooth_shading=True,
+            )
+
+        self.plotter.add_mesh(
+            pv.Cylinder(
+                center=(0, 0, -0.14),
+                direction=(0, 0, 1),
+                radius=0.46,
+                height=0.48,
+                resolution=48,
+            ),
+            color="#B94F36",
+            smooth_shading=True,
+        )
+        self.plotter.add_mesh(
+            pv.Cylinder(
+                center=(0, 0, 0.10),
+                direction=(0, 0, 1),
+                radius=0.49,
+                height=0.08,
+                resolution=48,
+            ),
+            color="#D16A46",
+            smooth_shading=True,
+        )
+        self.plotter.add_mesh(
+            pv.Cylinder(
+                center=(0, 0, 0.57),
+                direction=(0, 0, 1),
+                radius=0.12,
+                height=0.96,
+                resolution=24,
+            ),
+            color="#79523A",
+            smooth_shading=True,
+        )
+        self.plotter.add_mesh(
+            pv.Sphere(center=(0, 0, 3.66), radius=0.16, theta_resolution=20, phi_resolution=16),
+            color="#F2C451",
+            smooth_shading=True,
+        )
+
+        generator = random.Random()
+        light_colors = ("#F4C95D", "#E25C4A", "#62B7D0", "#F4EFE3")
+        for _ in range(24):
+            height = generator.uniform(0.30, 3.30)
+            radius = self._tree_surface_radius(height) + generator.uniform(0.025, 0.10)
+            phase = generator.uniform(0, math.tau)
+            speed = generator.choice((-1, 1)) * generator.uniform(0.28, 0.82)
+            color = generator.choice(light_colors)
+            actor = self.plotter.add_mesh(
+                pv.Sphere(radius=0.065, theta_resolution=12, phi_resolution=10),
+                color=color,
+                smooth_shading=True,
+            )
+            self.orbiters.append((actor, height, radius, phase, speed))
+
+        ground_ring = pv.Disc(
+            center=(0, 0, -0.39),
+            inner=0.52,
+            outer=1.55,
+            normal=(0, 0, 1),
+            r_res=1,
+            c_res=64,
+        )
+        self.plotter.add_mesh(ground_ring, color="#D9E5DE")
+
+    @staticmethod
+    def _tree_surface_radius(height):
+        tiers = ((0.95, 2.0, 1.0), (1.75, 2.0, 0.78), (2.55, 1.9, 0.56))
+        radii = []
+        for center_z, tier_height, base_radius in tiers:
+            lower = center_z - tier_height / 2
+            upper = center_z + tier_height / 2
+            if lower <= height <= upper:
+                radii.append(base_radius * (upper - height) / tier_height)
+        return max(radii, default=0.08)
+
+    def _animate_orbiters(self):
+        elapsed = time.monotonic() - self.animation_start
+        self._update_orbiter_positions(elapsed)
+        self.plotter.render()
+
+    def _update_orbiter_positions(self, elapsed):
+        for actor, height, radius, phase, speed in self.orbiters:
+            angle = phase + elapsed * speed
+            actor.SetPosition(
+                radius * math.cos(angle),
+                radius * math.sin(angle),
+                height,
+            )
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.animation_timer.isActive():
+            self.animation_start = time.monotonic()
+            self.animation_timer.start()
+
+    def closeEvent(self, event):
+        self.animation_timer.stop()
+        super().closeEvent(event)
 
     def _setup_color(self):
         response = QMessageBox.warning(
@@ -884,6 +1015,7 @@ class MainWindow(QMainWindow):
         self._show_workflow(LengthSetupDialog(self.central_stack, settings))
 
     def _show_workflow(self, page):
+        self.animation_timer.stop()
         page.finished.connect(lambda _result, finished_page=page: self._return_home(finished_page))
         self.central_stack.addWidget(page)
         self.central_stack.setCurrentWidget(page)
@@ -892,6 +1024,9 @@ class MainWindow(QMainWindow):
         self.central_stack.setCurrentWidget(self.home_page)
         self.central_stack.removeWidget(page)
         page.deleteLater()
+        if self.isVisible():
+            self.animation_start = time.monotonic()
+            self.animation_timer.start()
 
 
 def main():
