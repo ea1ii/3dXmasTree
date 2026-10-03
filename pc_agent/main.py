@@ -1390,7 +1390,7 @@ class MainWindow(QMainWindow):
             return
 
         session_name = datetime.now().strftime("%Y%m%d_%H%M")
-        output_directory = PROJECT_ROOT / "frames" / session_name
+        output_directory = PROJECT_ROOT / "pc_agent" / "frames" / session_name
         if output_directory.exists():
             QMessageBox.warning(
                 self,
