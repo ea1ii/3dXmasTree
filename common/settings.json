@@ -1,4 +1,16 @@
 {
+  "agents": {
+    "pi": {
+      "host": "CGlabWiFi",
+      "port": 8765
+    },
+    "laptop": {
+      "host": "CG-laptop",
+      "port": 8766
+    },
+    "timeout_seconds": 5,
+    "token_env": "XMAS_AGENT_TOKEN"
+  },
   "led": {
     "capture_test_led_count": 100,
     "maxLEDdist": 120.0,
