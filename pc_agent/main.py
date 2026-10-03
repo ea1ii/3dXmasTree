@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
+import importlib
+import inspect
+import json
 import math
 import os
-import random
+import pkgutil
 import sys
 import time
 from datetime import datetime
@@ -32,6 +35,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QListWidget,
+    QListWidgetItem,
     QProgressBar,
     QPushButton,
     QToolBar,
@@ -45,6 +50,7 @@ from pyvistaqt import QtInteractor
 
 
 from common.agent_client import AgentError, load_settings, request_image, request_json, save_settings
+from common.animations import Animation
 from calibration_model import (
     VIEWS as CALIBRATION_VIEWS,
     calibrate_frame_set,
@@ -56,6 +62,52 @@ from calibration_model import (
     source_timestamp,
 )
 from position_model import generate_strip_positions, render_led_frame
+
+
+def discover_pc_animations():
+    import common.animations as animation_package
+
+    discovered = {}
+    failures = []
+    for module_info in pkgutil.walk_packages(
+        animation_package.__path__,
+        prefix=f"{animation_package.__name__}.",
+    ):
+        try:
+            module = importlib.import_module(module_info.name)
+        except Exception as error:
+            failures.append((module_info.name, str(error)))
+            continue
+
+        for candidate in vars(module).values():
+            if (
+                inspect.isclass(candidate)
+                and candidate is not Animation
+                and issubclass(candidate, Animation)
+                and candidate.__module__ == module.__name__
+                and not inspect.isabstract(candidate)
+            ):
+                if not candidate.name or candidate.name in discovered:
+                    raise ValueError(f"Animation name is missing or duplicated: {candidate.name!r}")
+                discovered[candidate.name] = candidate
+
+    return [discovered[name] for name in sorted(discovered)], failures
+
+
+def validate_pc_animation_frame(frame, led_count):
+    colors = list(frame)
+    if len(colors) != led_count:
+        raise ValueError(f"Animation returned {len(colors)} LEDs; expected {led_count}")
+
+    validated = []
+    for index, color in enumerate(colors):
+        if not isinstance(color, (tuple, list)) or len(color) != 3:
+            raise ValueError(f"LED {index + 1} color must contain three RGB channels")
+        channels = tuple(int(channel) for channel in color)
+        if any(channel < 0 or channel > 255 for channel in channels):
+            raise ValueError(f"LED {index + 1} RGB channels must be between 0 and 255")
+        validated.append(channels)
+    return validated
 
 
 class OperationWorker(QThread):
@@ -2029,7 +2081,26 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("3dXmasTree")
-        self.resize(1100, 720)
+        self.resize(1280, 760)
+        self.settings = load_settings()
+        led_settings = self.settings["led"]
+        configured_count = led_settings.get("led_count") or led_settings.get(
+            "capture_test_led_count", 100
+        )
+        self.led_count = configured_count if isinstance(configured_count, int) and configured_count > 0 else 100
+        self.tree_height_mm = led_settings.get("simulated_tree_height_mm", 1200)
+        self.frame_height_mm = self.settings.get("camera", {}).get(
+            "frame_height_mm", self.tree_height_mm + 300
+        )
+        self.led_positions, self.position_source = self._load_simulator_positions()
+        self.led_actors = []
+        self.animation_classes = {}
+        self.active_animation = None
+        self.last_frame_at = None
+        self.frame_number = 0
+        self.animation_fps = float(self.settings.get("animation", {}).get("fps", 30.0))
+        self.animation_timer = QTimer(self)
+        self.animation_timer.timeout.connect(self._advance_animation_frame)
 
         self.plotter = QtInteractor(self)
         self.central_stack = QStackedWidget(self)
@@ -2072,19 +2143,15 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(button_panel)
         main_layout.addWidget(self.plotter, 1)
+        self.animation_panel = self._build_animation_panel()
+        main_layout.addWidget(self.animation_panel)
         self.central_stack.addWidget(self.home_page)
         self.setCentralWidget(self.central_stack)
 
         self.plotter.set_background("#f3f5f7")
-        self.orbiters = []
         self._build_tree_scene()
-        self._update_orbiter_positions(0)
         self._set_default_3d_view(self.plotter)
-
-        self.animation_timer = QTimer(self)
-        self.animation_timer.setInterval(33)
-        self.animation_timer.timeout.connect(self._animate_orbiters)
-        self.animation_start = time.monotonic()
+        self.refresh_animation_list()
 
         toolbar = QToolBar("Main", self)
         toolbar.setMovable(False)
@@ -2263,21 +2330,6 @@ class MainWindow(QMainWindow):
             smooth_shading=True,
         )
 
-        generator = random.Random()
-        light_colors = ("#F4C95D", "#E25C4A", "#62B7D0", "#F4EFE3")
-        for _ in range(24):
-            height = generator.uniform(0.30, 3.30)
-            radius = self._tree_surface_radius(height) + generator.uniform(0.025, 0.10)
-            phase = generator.uniform(0, math.tau)
-            speed = generator.choice((-1, 1)) * generator.uniform(0.28, 0.82)
-            color = generator.choice(light_colors)
-            actor = self.plotter.add_mesh(
-                pv.Sphere(radius=0.065, theta_resolution=12, phi_resolution=10),
-                color=color,
-                smooth_shading=True,
-            )
-            self.orbiters.append((actor, height, radius, phase, speed))
-
         ground_ring = pv.Disc(
             center=(0, 0, -0.39),
             inner=0.52,
@@ -2288,39 +2340,268 @@ class MainWindow(QMainWindow):
         )
         self.plotter.add_mesh(ground_ring, color="#D9E5DE")
 
-    @staticmethod
-    def _tree_surface_radius(height):
-        tiers = ((0.95, 2.0, 1.0), (1.75, 2.0, 0.78), (2.55, 1.9, 0.56))
-        radii = []
-        for center_z, tier_height, base_radius in tiers:
-            lower = center_z - tier_height / 2
-            upper = center_z + tier_height / 2
-            if lower <= height <= upper:
-                radii.append(base_radius * (upper - height) / tier_height)
-        return max(radii, default=0.08)
-
-    def _animate_orbiters(self):
-        elapsed = time.monotonic() - self.animation_start
-        self._update_orbiter_positions(elapsed)
-        self.plotter.render()
-
-    def _update_orbiter_positions(self, elapsed):
-        for actor, height, radius, phase, speed in self.orbiters:
-            angle = phase + elapsed * speed
-            actor.SetPosition(
-                radius * math.cos(angle),
-                radius * math.sin(angle),
-                height,
+        display_scale = 3.5 / self.tree_height_mm
+        generated_base_z = (self.frame_height_mm - self.tree_height_mm) / 2
+        led_radius = max(0.018, min(0.045, 0.22 / math.sqrt(self.led_count)))
+        for x, y, z in self.led_positions:
+            if self.position_source is None:
+                z -= generated_base_z
+            radial_distance = math.hypot(x, y)
+            if radial_distance:
+                x *= 1.06
+                y *= 1.06
+            position = (x * display_scale, y * display_scale, z * display_scale)
+            actor = self.plotter.add_mesh(
+                pv.Sphere(
+                    center=position,
+                    radius=led_radius,
+                    theta_resolution=12,
+                    phi_resolution=10,
+                ),
+                color="#101B16",
+                smooth_shading=True,
             )
+            actor.GetProperty().SetAmbient(0.45)
+            self.led_actors.append(actor)
 
-    def showEvent(self, event):
-        super().showEvent(event)
-        if not self.animation_timer.isActive():
-            self.animation_start = time.monotonic()
-            self.animation_timer.start()
+    def _load_simulator_positions(self):
+        frame_root = PROJECT_ROOT / "pc_agent" / "frames"
+        position_files = sorted(
+            frame_root.glob("*/positions_*.json"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for path in position_files:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                positions = payload["positions"]
+                if len(positions) != self.led_count:
+                    continue
+                parsed = [
+                    (float(point["x"]), float(point["y"]), float(point["z"]))
+                    for point in positions
+                ]
+                if all(math.isfinite(value) for point in parsed for value in point):
+                    return parsed, path
+            except (OSError, ValueError, TypeError, KeyError):
+                continue
+
+        led_settings = self.settings["led"]
+        positions = generate_strip_positions(
+            self.led_count,
+            led_settings.get("maxLEDdist", 120.0),
+            self.tree_height_mm,
+            self.frame_height_mm,
+        )
+        return positions, None
+
+    def _build_animation_panel(self):
+        panel = QWidget(self.home_page)
+        panel.setFixedWidth(250)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        title = QLabel("Animations", panel)
+        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(title)
+
+        refresh_button = QPushButton("Refresh List", panel)
+        refresh_button.clicked.connect(lambda _checked=False: self.refresh_animation_list())
+        layout.addWidget(refresh_button)
+
+        self.animation_list = QListWidget(panel)
+        self.animation_list.currentItemChanged.connect(self._on_animation_selected)
+        layout.addWidget(self.animation_list, 1)
+
+        self.animation_info = QLabel("Select an animation to inspect it.", panel)
+        self.animation_info.setWordWrap(True)
+        self.animation_info.setMinimumHeight(72)
+        layout.addWidget(self.animation_info)
+
+        rate_row = QHBoxLayout()
+        rate_row.addWidget(QLabel("Rate"))
+        self.animation_rate = QDoubleSpinBox(panel)
+        self.animation_rate.setRange(1, 120)
+        self.animation_rate.setDecimals(0)
+        self.animation_rate.setSuffix(" FPS")
+        self.animation_rate.setValue(self.animation_fps)
+        self.animation_rate.valueChanged.connect(self._set_animation_rate)
+        rate_row.addWidget(self.animation_rate, 1)
+        layout.addLayout(rate_row)
+
+        controls = QHBoxLayout()
+        self.play_button = QPushButton("Play", panel)
+        self.stop_button = QPushButton("Stop", panel)
+        self.frame_button = QPushButton("Frame", panel)
+        self.frame_button.setToolTip("Advance the selected animation by one frame")
+        self.play_button.clicked.connect(lambda _checked=False: self._play_animation())
+        self.stop_button.clicked.connect(lambda _checked=False: self._stop_animation())
+        self.frame_button.clicked.connect(lambda _checked=False: self._step_animation_frame())
+        controls.addWidget(self.play_button)
+        controls.addWidget(self.stop_button)
+        controls.addWidget(self.frame_button)
+        layout.addLayout(controls)
+
+        self.animation_status = QLabel("Ready", panel)
+        self.animation_status.setWordWrap(True)
+        layout.addWidget(self.animation_status)
+
+        position_label = QLabel(
+            f"{self.led_count} LEDs | "
+            f"{self.position_source.name if self.position_source else 'generated positions'}",
+            panel,
+        )
+        position_label.setWordWrap(True)
+        layout.addWidget(position_label)
+        self._update_animation_controls()
+        return panel
+
+    def refresh_animation_list(self):
+        self._stop_animation()
+        selected_name = self.animation_list.currentItem().data(Qt.ItemDataRole.UserRole) if self.animation_list.currentItem() else None
+        animations, failures = discover_pc_animations()
+        self.animation_classes = {animation.name: animation for animation in animations}
+        self.animation_list.blockSignals(True)
+        self.animation_list.clear()
+        selected_row = 0
+        for row, animation in enumerate(animations):
+            item = QListWidgetItem(animation.name)
+            item.setData(Qt.ItemDataRole.UserRole, animation.name)
+            item.setToolTip(animation.description)
+            self.animation_list.addItem(item)
+            if animation.name == selected_name:
+                selected_row = row
+        if animations:
+            self.animation_list.setCurrentRow(selected_row)
+        self.animation_list.blockSignals(False)
+        self._on_animation_selected(self.animation_list.currentItem(), None)
+        if failures:
+            skipped = ", ".join(module for module, _message in failures)
+            self.animation_status.setText(f"Loaded {len(animations)}; skipped: {skipped}")
+        else:
+            self.animation_status.setText(f"{len(animations)} animation(s) loaded")
+        self._update_animation_controls()
+
+    def _on_animation_selected(self, current, _previous):
+        if self.active_animation is not None:
+            self._stop_animation()
+        if current is None:
+            self.animation_info.setText("No animations found in common/animations.")
+        else:
+            animation = self.animation_classes[current.data(Qt.ItemDataRole.UserRole)]
+            self.animation_info.setText(
+                f"{animation.name} v{animation.version} by {animation.author}\n\n"
+                f"{animation.description}"
+            )
+            self.animation_status.setText("Ready")
+        self._update_animation_controls()
+
+    def _update_animation_controls(self):
+        selected = self.animation_list.currentItem() is not None
+        playing = self.animation_timer.isActive()
+        self.play_button.setEnabled(selected and not playing)
+        self.stop_button.setEnabled(playing or self.active_animation is not None)
+        self.frame_button.setEnabled(selected and not playing)
+
+    def _set_animation_rate(self, fps):
+        self.animation_fps = float(fps)
+        if self.animation_timer.isActive():
+            self.animation_timer.setInterval(max(1, round(1000 / self.animation_fps)))
+
+    def _initialise_selected_animation(self):
+        item = self.animation_list.currentItem()
+        if item is None:
+            return False
+        animation_class = self.animation_classes[item.data(Qt.ItemDataRole.UserRole)]
+        animation = animation_class()
+        animation.initialise(self.led_count, {})
+        self.active_animation = animation
+        self.frame_number = 0
+        return True
+
+    def _play_animation(self):
+        self._stop_animation()
+        try:
+            if not self._initialise_selected_animation():
+                return
+            if not self._render_animation_step(0.0):
+                return
+            self.last_frame_at = time.monotonic()
+            self.animation_timer.start(max(1, round(1000 / self.animation_fps)))
+            self.animation_status.setText("Playing")
+        except Exception as error:
+            self._animation_failed(error)
+        self._update_animation_controls()
+
+    def _step_animation_frame(self):
+        try:
+            if self.active_animation is None and not self._initialise_selected_animation():
+                return
+            self.last_frame_at = None
+            if self._render_animation_step(1.0 / self.animation_fps):
+                self.animation_status.setText(f"Frame {self.frame_number}")
+        except Exception as error:
+            self._animation_failed(error)
+        self._update_animation_controls()
+
+    def _advance_animation_frame(self):
+        now = time.monotonic()
+        delta_seconds = max(0.0, now - self.last_frame_at) if self.last_frame_at else 0.0
+        self.last_frame_at = now
+        if self._render_animation_step(delta_seconds):
+            self.animation_status.setText(f"Playing | frame {self.frame_number}")
+
+    def _render_animation_step(self, delta_seconds):
+        try:
+            frame = validate_pc_animation_frame(
+                self.active_animation.doframe(delta_seconds), self.led_count
+            )
+            for actor, color in zip(self.led_actors, frame):
+                actor.GetProperty().SetColor(*(channel / 255 for channel in color))
+            self.frame_number += 1
+            self.plotter.render()
+            return True
+        except Exception as error:
+            self._animation_failed(error)
+            return False
+
+    def _animation_failed(self, error):
+        self.animation_timer.stop()
+        if self.active_animation is not None:
+            try:
+                self.active_animation.stop()
+            except Exception:
+                pass
+        self.active_animation = None
+        for actor in self.led_actors:
+            actor.GetProperty().SetColor(0.06, 0.10, 0.08)
+        self.plotter.render()
+        self.animation_status.setText(f"Animation error: {error}")
+        self._update_animation_controls()
+
+    def _stop_animation(self):
+        self.animation_timer.stop()
+        stop_error = None
+        if self.active_animation is not None:
+            try:
+                self.active_animation.stop()
+            except Exception as error:
+                stop_error = error
+        self.active_animation = None
+        self.last_frame_at = None
+        self.frame_number = 0
+        for actor in self.led_actors:
+            actor.GetProperty().SetColor(0.06, 0.10, 0.08)
+        if self.led_actors:
+            self.plotter.render()
+        if hasattr(self, "animation_status"):
+            self.animation_status.setText(f"Stop failed: {stop_error}" if stop_error else "Stopped")
+            self._update_animation_controls()
+
 
     def closeEvent(self, event):
-        self.animation_timer.stop()
+        self._stop_animation()
         super().closeEvent(event)
 
     def _setup_color(self):
@@ -2446,14 +2727,14 @@ class MainWindow(QMainWindow):
         self._show_workflow(page)
 
     def _show_workflow(self, page):
-        self.animation_timer.stop()
+        self._stop_animation()
         page.finished.connect(lambda _result, finished_page=page: self._return_home(finished_page))
         self.central_stack.addWidget(page)
         self.central_stack.setCurrentWidget(page)
         self._sync_parallel_projection_action()
 
     def _return_home(self, page):
-        self.animation_timer.stop()
+        self._stop_animation()
         for viewport in page.findChildren(QtInteractor):
             viewport.close()
         self.central_stack.setCurrentWidget(self.home_page)
@@ -2470,8 +2751,6 @@ class MainWindow(QMainWindow):
         self.plotter.render()
         self.plotter.update()
         self.central_stack.update()
-        self.animation_start = time.monotonic()
-        self.animation_timer.start()
 
 
 def main():

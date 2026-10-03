@@ -5,7 +5,7 @@ The laptop agent opens the configured webcam once at startup and returns JPEG sn
 From PowerShell at the repository root, run:
 
 ```powershell
-.\laptop_agent\run.ps1
+ .\laptop_agent\camera_server.ps1
 ```
 
 The launcher creates/updates its virtual environment and asks for the shared PC token on first run. It saves the token under Windows local application data, outside the repository. Configure the laptop hostname, port, camera device index, and JPEG quality in `common/settings.json`. The service listens on port `8766` by default.
