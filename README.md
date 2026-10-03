@@ -4,7 +4,7 @@ A 3D Xmas tree LED strip
 ## Agent Layout
 
 - `pc_agent` is the command center and owns the operator UI.
-- `pi_agent` runs the LED command service. It simulates the strip by default; use `--hardware` only when the strip is connected and configured.
+- `pi_agent` runs the LED command service and animation engine; shared animation classes live in `common/animations/`.
 - `laptop_agent` runs the webcam service and returns JPEG snapshots on request.
 - `common/settings.json` contains LAN hostnames, ports, LED test limit and calibrated LED count, GPIO pin, and camera settings. Keep the file in sync on each computer.
 

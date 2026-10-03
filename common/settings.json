@@ -23,5 +23,9 @@
   },
   "calibration": {
     "match_tolerance_mm": 25.0
+  },
+  "animation": {
+    "fps": 30.0,
+    "seconds_per_animation": 10.0
   }
 }
