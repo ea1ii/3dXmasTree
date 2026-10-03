@@ -18,9 +18,10 @@ if __name__ == "__main__":
 
 import pyvista as pv
 from PySide6.QtGui import QAction, QColor, QKeySequence, QPainter, QPen, QPixmap
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QRectF, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QDialog,
     QComboBox,
     QDoubleSpinBox,
@@ -1240,6 +1241,117 @@ class PositionCapturePage(QDialog):
         self._begin_cleanup("abort")
 
 
+class CalibrationImageView(QLabel):
+    positionReleased = Signal(float, float)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.source_pixmap = QPixmap()
+        self.crosshair_position = None
+        self.crosshair_enabled = False
+        self.dragging = False
+        self._image_rect = QRectF()
+        self.setMinimumSize(220, 150)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMouseTracking(True)
+        self.setStyleSheet("background: #20242a; color: white;")
+
+    def set_picture(self, pixmap, position, crosshair_enabled):
+        self.source_pixmap = pixmap
+        self.crosshair_position = position
+        self.crosshair_enabled = crosshair_enabled
+        self.setText("" if not pixmap.isNull() else "Image unavailable")
+        self.update()
+
+    def set_model_picture(self, pixmap):
+        self.source_pixmap = pixmap
+        self.crosshair_position = None
+        self.crosshair_enabled = False
+        self.setText("")
+        self.update()
+
+    def _target_rect(self):
+        if self.source_pixmap.isNull():
+            return QRectF()
+        area = QRectF(self.contentsRect())
+        image_width = self.source_pixmap.width()
+        image_height = self.source_pixmap.height()
+        scale = min(area.width() / image_width, area.height() / image_height)
+        target_width = image_width * scale
+        target_height = image_height * scale
+        return QRectF(
+            area.left() + (area.width() - target_width) / 2,
+            area.top() + (area.height() - target_height) / 2,
+            target_width,
+            target_height,
+        )
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor("#20242a"))
+        self._image_rect = self._target_rect()
+        if self.source_pixmap.isNull():
+            painter.setPen(QColor("white"))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())
+            return
+
+        painter.drawPixmap(self._image_rect, self.source_pixmap, QRectF(self.source_pixmap.rect()))
+        if self.crosshair_enabled and self.crosshair_position is not None:
+            x = self._image_rect.left() + (
+                self.crosshair_position[0] / self.source_pixmap.width()
+            ) * self._image_rect.width()
+            y = self._image_rect.top() + (
+                self.crosshair_position[1] / self.source_pixmap.height()
+            ) * self._image_rect.height()
+            painter.setPen(QPen(QColor("#F04444"), 2))
+            painter.drawLine(x - 12, y, x + 12, y)
+            painter.drawLine(x, y - 12, x, y + 12)
+            painter.drawEllipse(QRectF(x - 6, y - 6, 12, 12))
+
+    def _image_position(self, widget_position):
+        if self._image_rect.isEmpty() or not self._image_rect.contains(widget_position):
+            return None
+        x = (widget_position.x() - self._image_rect.left()) / self._image_rect.width()
+        y = (widget_position.y() - self._image_rect.top()) / self._image_rect.height()
+        return (
+            min(self.source_pixmap.width() - 1, max(0.0, x * self.source_pixmap.width())),
+            min(self.source_pixmap.height() - 1, max(0.0, y * self.source_pixmap.height())),
+        )
+
+    def mousePressEvent(self, event):
+        if self.crosshair_enabled and event.button() == Qt.MouseButton.LeftButton:
+            position = self._image_position(event.position())
+            if position is not None:
+                self.dragging = True
+                self.crosshair_position = position
+                self.update()
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.dragging:
+            position = self._image_position(event.position())
+            if position is not None:
+                self.crosshair_position = position
+                self.update()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.dragging and event.button() == Qt.MouseButton.LeftButton:
+            self.dragging = False
+            position = self._image_position(event.position())
+            if position is not None:
+                self.crosshair_position = position
+                self.update()
+                self.positionReleased.emit(*position)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class CalibrationPage(QDialog):
     def __init__(self, parent, frame_folder, settings):
         super().__init__(parent)
@@ -1293,10 +1405,11 @@ class CalibrationPage(QDialog):
             toolbar.addWidget(mode)
             panel_layout.addLayout(toolbar)
 
-            image_label = QLabel("Detecting bright spots...")
-            image_label.setMinimumSize(220, 150)
-            image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            image_label.setStyleSheet("background: #20242a; color: white;")
+            image_label = CalibrationImageView(panel)
+            image_label.setText("Detecting bright spots...")
+            image_label.positionReleased.connect(
+                lambda x, y, selected_view=view: self._edit_detection(selected_view, x, y)
+            )
             panel_layout.addWidget(image_label, 1)
             view_grid.addWidget(panel, *grid_positions[view])
             self.view_modes[view] = mode
@@ -1348,6 +1461,12 @@ class CalibrationPage(QDialog):
         self.max_distance_spin.setMinimumWidth(128)
         self.max_distance_spin.setMaximumWidth(140)
         settings_layout.addWidget(self.max_distance_spin)
+        self.crosshair_toggle = QCheckBox("Adjust LED centers")
+        self.crosshair_toggle.setToolTip(
+            "Enable the red crosshairs in Picture mode; drag and release to update a detected center."
+        )
+        self.crosshair_toggle.toggled.connect(self._refresh_all_views)
+        settings_layout.addWidget(self.crosshair_toggle)
         settings_layout.addStretch(1)
         right_layout.addLayout(settings_layout)
 
@@ -1612,17 +1731,28 @@ class CalibrationPage(QDialog):
             is_picture = self.view_modes[view].currentText() == "Picture"
             if is_picture:
                 pixmap = QPixmap(str(self.frame_paths[view][led_index]))
+                detection = (
+                    self.detections[view][led_index]
+                    if self.detections is not None
+                    else None
+                )
+                label.set_picture(
+                    pixmap,
+                    (detection["x"], detection["y"]) if detection else None,
+                    self.crosshair_toggle.isChecked(),
+                )
             else:
                 pixmap = self._flat_model_pixmap(view, label.size())
-            if not pixmap.isNull():
-                pixmap = pixmap.scaled(
-                    label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-                if is_picture:
-                    pixmap = self._draw_plane_guides(pixmap, view)
-                label.setPixmap(pixmap)
+                label.set_model_picture(pixmap)
+
+    def _edit_detection(self, view, x, y):
+        if self.detections is None:
+            return
+        led_index = self.led_indices[self.current_frame_index]
+        detection = self.detections[view][led_index]
+        detection["x"] = x
+        detection["y"] = y
+        self._recalculate()
     def _refresh_view(self, view):
         if self.detections is not None:
             self._refresh_all_views()
@@ -1876,12 +2006,6 @@ class CalibrationPage(QDialog):
                 {
                     "height_mm": self.tree_height_mm * self.height_scale_spin.value(),
                     "base_radius_mm": self.tree_height_mm * 0.34 * self.width_scale_spin.value(),
-                    "axis_origin_mm": {"x": 0.0, "y": 0.0, "z": 0.0},
-                    "led_offset_mm": {
-                        "x": self.center_offset[0],
-                        "y": self.center_offset[1],
-                        "z": self.center_offset[2],
-                    },
                 },
             )
             self.settings.setdefault("calibration", {})[
