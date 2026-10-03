@@ -17,12 +17,17 @@ if __name__ == "__main__":
     require_platform("pc")
 
 import pyvista as pv
-from PySide6.QtGui import QAction, QKeySequence, QPixmap
+from PySide6.QtGui import QAction, QColor, QKeySequence, QPainter, QPen, QPixmap
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QComboBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -32,11 +37,21 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
 )
 from pyvistaqt import QtInteractor
 
 
 from common.agent_client import AgentError, load_settings, request_image, request_json, save_settings
+from calibration_model import (
+    VIEWS as CALIBRATION_VIEWS,
+    calibrate_frame_set,
+    load_frame_paths,
+    positions_from_detections,
+    save_positions,
+    source_timestamp,
+)
 from position_model import generate_strip_positions, render_led_frame
 
 
@@ -1217,6 +1232,396 @@ class PositionCapturePage(QDialog):
         self._begin_cleanup("abort")
 
 
+class CalibrationPage(QDialog):
+    def __init__(self, parent, frame_folder, settings):
+        super().__init__(parent)
+        self.frame_folder = Path(frame_folder)
+        self.settings = settings
+        self.timestamp = source_timestamp(self.frame_folder)
+        self.led_indices, self.frame_paths = load_frame_paths(self.frame_folder)
+        self.current_frame_index = 0
+        self.detections = None
+        self.points = []
+        self.analysis_worker = None
+        self.point_actors = []
+        self.link_actors = []
+        self.tree_height_mm = settings["led"].get("simulated_tree_height_mm", 1200)
+        self.frame_height_mm = settings["camera"]["frame_height_mm"]
+        self.setWindowTitle("Calibrate LED Positions")
+        self.setWindowFlags(Qt.WindowType.Widget)
+        self.setModal(False)
+
+        root_layout = QVBoxLayout(self)
+        header = QLabel(f"Calibrate positions from {self.frame_folder}")
+        header.setStyleSheet("font-size: 18px; font-weight: bold;")
+        root_layout.addWidget(header)
+
+        workspace = QHBoxLayout()
+        root_layout.addLayout(workspace, 1)
+
+        view_container = QWidget(self)
+        view_grid = QGridLayout(view_container)
+        view_grid.setContentsMargins(0, 0, 0, 0)
+        view_grid.setSpacing(6)
+        self.view_modes = {}
+        self.view_labels = {}
+        grid_positions = {"front": (0, 0), "back": (0, 1), "left": (1, 0), "right": (1, 1)}
+        for view in CALIBRATION_VIEWS:
+            panel = QWidget(view_container)
+            panel_layout = QVBoxLayout(panel)
+            panel_layout.setContentsMargins(4, 4, 4, 4)
+            toolbar = QHBoxLayout()
+            toolbar.addWidget(QLabel(view.title()))
+            mode = QComboBox(panel)
+            mode.addItems(("Picture", "Model"))
+            mode.currentTextChanged.connect(lambda _text, selected=view: self._refresh_view(selected))
+            toolbar.addStretch()
+            toolbar.addWidget(mode)
+            panel_layout.addLayout(toolbar)
+
+            image_label = QLabel("Detecting bright spots...")
+            image_label.setMinimumSize(220, 150)
+            image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            image_label.setStyleSheet("background: #20242a; color: white;")
+            panel_layout.addWidget(image_label, 1)
+            view_grid.addWidget(panel, *grid_positions[view])
+            self.view_modes[view] = mode
+            self.view_labels[view] = image_label
+        workspace.addWidget(view_container, 3)
+
+        right_panel = QWidget(self)
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.addWidget(QLabel("3D LED model"))
+        self.model_plotter = QtInteractor(right_panel)
+        right_layout.addWidget(self.model_plotter, 3)
+
+        navigation = QHBoxLayout()
+        self.previous_button = QPushButton("Previous Frame")
+        self.next_button = QPushButton("Next Frame")
+        self.frame_label = QLabel("Frame -")
+        self.previous_button.clicked.connect(lambda: self._move_frame(-1))
+        self.next_button.clicked.connect(lambda: self._move_frame(1))
+        navigation.addWidget(self.previous_button)
+        navigation.addWidget(self.frame_label, 1)
+        navigation.addWidget(self.next_button)
+        right_layout.addLayout(navigation)
+
+        display_modes = QHBoxLayout()
+        self.all_pictures_button = QPushButton("All Pictures")
+        self.all_models_button = QPushButton("All Models")
+        self.all_pictures_button.clicked.connect(lambda: self._set_all_modes("Picture"))
+        self.all_models_button.clicked.connect(lambda: self._set_all_modes("Model"))
+        display_modes.addWidget(self.all_pictures_button)
+        display_modes.addWidget(self.all_models_button)
+        right_layout.addLayout(display_modes)
+
+        settings_layout = QGridLayout()
+        settings_layout.addWidget(QLabel("View-match tolerance"), 0, 0)
+        self.tolerance_spin = QDoubleSpinBox()
+        self.tolerance_spin.setRange(0, 1000)
+        self.tolerance_spin.setDecimals(1)
+        self.tolerance_spin.setSuffix(" mm")
+        self.tolerance_spin.setValue(settings.get("calibration", {}).get("match_tolerance_mm", 50))
+        settings_layout.addWidget(self.tolerance_spin, 0, 1)
+        settings_layout.addWidget(QLabel("Maximum LED spacing"), 1, 0)
+        self.max_distance_spin = QDoubleSpinBox()
+        self.max_distance_spin.setRange(1, 10000)
+        self.max_distance_spin.setDecimals(1)
+        self.max_distance_spin.setSuffix(" mm")
+        self.max_distance_spin.setValue(settings["led"]["maxLEDdist"])
+        settings_layout.addWidget(self.max_distance_spin, 1, 1)
+        right_layout.addLayout(settings_layout)
+
+        self.points_table = QTableWidget(0, 6, right_panel)
+        self.points_table.setHorizontalHeaderLabels(
+            ("LED", "X mm", "Y mm", "Z mm", "Match mm", "Status")
+        )
+        self.points_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.points_table.currentCellChanged.connect(self._table_selection_changed)
+        right_layout.addWidget(self.points_table, 2)
+        workspace.addWidget(right_panel, 2)
+
+        self.status_label = QLabel("Detecting the brightest spot in each frame...")
+        root_layout.addWidget(self.status_label)
+        footer = QHBoxLayout()
+        footer.addStretch()
+        self.save_button = QPushButton("Save Positions")
+        self.close_button = QPushButton("Close")
+        self.save_button.clicked.connect(self._save)
+        self.close_button.clicked.connect(self.reject)
+        footer.addWidget(self.save_button)
+        footer.addWidget(self.close_button)
+        root_layout.addLayout(footer)
+
+        self.previous_button.setEnabled(False)
+        self.next_button.setEnabled(False)
+        self.save_button.setEnabled(False)
+        self.tolerance_spin.valueChanged.connect(self._recalculate)
+        self.max_distance_spin.valueChanged.connect(self._recalculate)
+        self._build_3d_tree()
+        QTimer.singleShot(0, self._start_detection)
+
+    def _build_3d_tree(self):
+        self.model_plotter.set_background("#17221f")
+        base_z = (self.frame_height_mm - self.tree_height_mm) / 2
+        self.model_plotter.add_mesh(
+            pv.Cone(
+                center=(0, 0, base_z + self.tree_height_mm / 2),
+                direction=(0, 0, 1),
+                height=self.tree_height_mm,
+                radius=self.tree_height_mm * 0.34,
+                resolution=64,
+            ),
+            color="#39855F",
+            opacity=0.24,
+        )
+        self.model_plotter.add_axes()
+        self.model_plotter.view_isometric()
+        self.model_plotter.reset_camera()
+
+    def _start_detection(self):
+        def analyze():
+            return calibrate_frame_set(
+                self.frame_paths,
+                self.led_indices,
+                self.frame_height_mm,
+                self.tolerance_spin.value(),
+                self.max_distance_spin.value(),
+            )
+
+        self.analysis_worker = OperationWorker(analyze, self)
+        self.analysis_worker.succeeded.connect(self._analysis_succeeded)
+        self.analysis_worker.failed.connect(self._analysis_failed)
+        self.analysis_worker.finished.connect(self._analysis_finished)
+        self.analysis_worker.start()
+
+    def _analysis_succeeded(self, result):
+        self.points, self.detections = result
+        self.previous_button.setEnabled(len(self.led_indices) > 1)
+        self.next_button.setEnabled(len(self.led_indices) > 1)
+        self.save_button.setEnabled(bool(self.points))
+        self._update_results()
+
+    def _analysis_failed(self, message):
+        self.status_label.setText("Calibration could not detect all LED spots.")
+        QMessageBox.critical(self, "Calibrate", message)
+
+    def _analysis_finished(self):
+        worker = self.analysis_worker
+        self.analysis_worker = None
+        if worker is not None:
+            worker.deleteLater()
+
+    def _recalculate(self, *_args):
+        if self.detections is None:
+            return
+        try:
+            self.points = positions_from_detections(
+                self.detections,
+                self.led_indices,
+                self.frame_height_mm,
+                self.tolerance_spin.value(),
+                self.max_distance_spin.value(),
+            )
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            return
+        self._update_results()
+
+    def _update_results(self):
+        valid_count = sum(point["valid"] for point in self.points)
+        adjusted_count = sum(point["adjusted"] for point in self.points)
+        self.status_label.setText(
+            f"{valid_count}/{len(self.points)} points match within tolerance; "
+            f"{adjusted_count} adjusted to the max spacing."
+        )
+        self.points_table.setRowCount(len(self.points))
+        for row, point in enumerate(self.points):
+            status = "Adjusted" if point["adjusted"] else "Matched" if point["valid"] else "Mismatch"
+            values = (
+                str(point["index"]),
+                f"{point['x']:.1f}",
+                f"{point['y']:.1f}",
+                f"{point['z']:.1f}",
+                f"{point['match_error_mm']:.1f}",
+                status,
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.points_table.setItem(row, column, item)
+        self.points_table.selectRow(self.current_frame_index)
+        self._refresh_all_views()
+        self._refresh_3d_points()
+
+    def _refresh_all_views(self):
+        led_index = self.led_indices[self.current_frame_index]
+        self.frame_label.setText(f"LED {led_index}")
+        self.previous_button.setEnabled(self.current_frame_index > 0 and self.detections is not None)
+        self.next_button.setEnabled(
+            self.detections is not None and self.current_frame_index + 1 < len(self.led_indices)
+        )
+        for view in CALIBRATION_VIEWS:
+            label = self.view_labels[view]
+            if self.view_modes[view].currentText() == "Picture":
+                pixmap = QPixmap(str(self.frame_paths[view][led_index]))
+            else:
+                pixmap = self._flat_model_pixmap(view, label.size())
+            if not pixmap.isNull():
+                label.setPixmap(
+                    pixmap.scaled(
+                        label.size(),
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+
+    def _refresh_view(self, view):
+        if self.detections is not None:
+            self._refresh_all_views()
+
+    def _set_all_modes(self, mode):
+        for combo in self.view_modes.values():
+            combo.setCurrentText(mode)
+
+    def _move_frame(self, delta):
+        if not self.led_indices:
+            return
+        self.current_frame_index = min(
+            max(0, self.current_frame_index + delta), len(self.led_indices) - 1
+        )
+        if self.detections is not None:
+            self._refresh_all_views()
+            self.points_table.selectRow(self.current_frame_index)
+            self._refresh_3d_points()
+
+    def _table_selection_changed(self, row, *_args):
+        if 0 <= row < len(self.led_indices) and row != self.current_frame_index:
+            self.current_frame_index = row
+            self._refresh_all_views()
+            self._refresh_3d_points()
+
+    def _flat_model_pixmap(self, view, size):
+        width = max(1, size.width())
+        height = max(1, size.height())
+        image = QPixmap(width, height)
+        image.fill(QColor("#F5F7F5"))
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        margin = 18
+        frame_width_mm = self.frame_height_mm * 4 / 3
+        scale = min(
+            (width - 2 * margin) / frame_width_mm,
+            (height - 2 * margin) / self.frame_height_mm,
+        )
+
+        def to_screen(point):
+            if view == "front":
+                horizontal = point["y"]
+            elif view == "back":
+                horizontal = -point["y"]
+            elif view == "left":
+                horizontal = point["x"]
+            else:
+                horizontal = -point["x"]
+            return (
+                width / 2 + horizontal * scale,
+                height - margin - point["z"] * scale,
+            )
+
+        axis_pen = QPen(QColor("#AAB5AE"), 1)
+        painter.setPen(axis_pen)
+        painter.drawLine(margin, height - margin, width - margin, height - margin)
+        painter.drawLine(width / 2, margin, width / 2, height - margin)
+
+        if self.points:
+            screen_points = [to_screen(point) for point in self.points]
+            painter.setPen(QPen(QColor("#648070"), 2))
+            for first, second in zip(screen_points, screen_points[1:]):
+                painter.drawLine(*first, *second)
+            for index, (point, screen_point) in enumerate(zip(self.points, screen_points)):
+                if point["adjusted"]:
+                    color = QColor("#E49B38")
+                elif point["valid"]:
+                    color = QColor("#358B5F")
+                else:
+                    color = QColor("#D44F4F")
+                if index == self.current_frame_index:
+                    color = QColor("#F2B83F")
+                painter.setBrush(color)
+                painter.setPen(QPen(QColor("#20352A"), 1))
+                painter.drawEllipse(screen_point[0] - 5, screen_point[1] - 5, 10, 10)
+        painter.end()
+        return image
+
+    def _refresh_3d_points(self):
+        for actor in self.point_actors + self.link_actors:
+            self.model_plotter.remove_actor(actor, render=False)
+        self.point_actors.clear()
+        self.link_actors.clear()
+
+        for index, point in enumerate(self.points):
+            if point["adjusted"]:
+                color = "#E49B38"
+            elif point["valid"]:
+                color = "#358B5F"
+            else:
+                color = "#D44F4F"
+            if index == self.current_frame_index:
+                color = "#F2B83F"
+            actor = self.model_plotter.add_mesh(
+                pv.Sphere(center=(point["x"], point["y"], point["z"]), radius=20),
+                color=color,
+                smooth_shading=True,
+            )
+            self.point_actors.append(actor)
+            if index:
+                previous = self.points[index - 1]
+                link = pv.Line(
+                    (previous["x"], previous["y"], previous["z"]),
+                    (point["x"], point["y"], point["z"]),
+                ).tube(radius=5)
+                self.link_actors.append(
+                    self.model_plotter.add_mesh(link, color="#D9B967")
+                )
+        self.model_plotter.render()
+
+    def _save(self):
+        if not self.points:
+            return
+        output_path = self.frame_folder / f"positions_{self.timestamp}.json"
+        if output_path.exists():
+            response = QMessageBox.warning(
+                self,
+                "Overwrite positions?",
+                f"{output_path.name} already exists. Replace it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if response != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            save_positions(output_path, self.points, self.timestamp)
+            self.settings.setdefault("calibration", {})[
+                "match_tolerance_mm"
+            ] = self.tolerance_spin.value()
+            self.settings["led"]["maxLEDdist"] = self.max_distance_spin.value()
+            save_settings(self.settings)
+        except (OSError, ValueError) as error:
+            QMessageBox.critical(self, "Calibrate", f"Could not save positions: {error}")
+            return
+        QMessageBox.information(self, "Calibrate", f"Saved positions to:\n{output_path}")
+        self.accept()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.detections is not None:
+            QTimer.singleShot(0, self._refresh_all_views)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1251,6 +1656,11 @@ class MainWindow(QMainWindow):
         grab_positions_button.clicked.connect(self._grab_positions)
         button_layout.addWidget(grab_positions_button)
 
+        calibrate_button = QPushButton("Calibrate", button_panel)
+        calibrate_button.setMinimumHeight(36)
+        calibrate_button.clicked.connect(self._calibrate)
+        button_layout.addWidget(calibrate_button)
+
         exit_button = QPushButton("Exit", button_panel)
         exit_button.setMinimumHeight(36)
         exit_button.clicked.connect(lambda checked=False: self.close())
@@ -1282,7 +1692,7 @@ class MainWindow(QMainWindow):
         reset_view = QAction("Reset View", self)
         reset_view.setShortcut(QKeySequence("Ctrl+0"))
         reset_view.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
-        reset_view.triggered.connect(lambda checked=False: self.plotter.reset_camera())
+        reset_view.triggered.connect(lambda checked=False: self._reset_current_3d_view())
         self.addAction(reset_view)
         toolbar.addAction(reset_view)
 
@@ -1300,19 +1710,28 @@ class MainWindow(QMainWindow):
         self.axes_action.toggled.connect(self._set_axes_visible)
         toolbar.addAction(self.axes_action)
 
-        hello = QAction("Hello", self)
-        hello.triggered.connect(
-            lambda checked=False: self.statusBar().showMessage("Hello, world!", 3000)
-        )
-        toolbar.addAction(hello)
-
         self.statusBar().showMessage("Ready")
 
+    def _current_3d_viewport(self):
+        current_page = self.central_stack.currentWidget()
+        if isinstance(current_page, QtInteractor):
+            return current_page
+        viewports = current_page.findChildren(QtInteractor)
+        return viewports[0] if viewports else None
+
+    def _reset_current_3d_view(self):
+        viewport = self._current_3d_viewport()
+        if viewport is not None:
+            viewport.reset_camera()
+
     def _set_axes_visible(self, visible):
+        viewport = self._current_3d_viewport()
+        if viewport is None:
+            return
         if visible:
-            self.plotter.show_axes()
+            viewport.show_axes()
         else:
-            self.plotter.hide_axes()
+            viewport.hide_axes()
 
     def _build_tree_scene(self):
         tiers = (
@@ -1532,6 +1951,27 @@ class MainWindow(QMainWindow):
             return
         self._show_workflow(page)
 
+    def _calibrate(self):
+        frame_root = PROJECT_ROOT / "pc_agent" / "frames"
+        frame_folder = QFileDialog.getExistingDirectory(
+            self,
+            "Select captured frame session",
+            str(frame_root),
+            QFileDialog.Option.ShowDirsOnly,
+        )
+        if not frame_folder:
+            return
+
+        try:
+            settings = load_settings()
+            source_timestamp(frame_folder)
+            load_frame_paths(frame_folder)
+            page = CalibrationPage(self.central_stack, frame_folder, settings)
+        except (OSError, ValueError) as error:
+            QMessageBox.critical(self, "Calibrate", str(error))
+            return
+        self._show_workflow(page)
+
     def _show_workflow(self, page):
         self.animation_timer.stop()
         page.finished.connect(lambda _result, finished_page=page: self._return_home(finished_page))
@@ -1539,12 +1979,20 @@ class MainWindow(QMainWindow):
         self.central_stack.setCurrentWidget(page)
 
     def _return_home(self, page):
+        self.animation_timer.stop()
         self.central_stack.setCurrentWidget(self.home_page)
         self.central_stack.removeWidget(page)
         page.deleteLater()
-        if self.isVisible():
-            self.animation_start = time.monotonic()
-            self.animation_timer.start()
+        QTimer.singleShot(0, self._restore_home_viewport)
+
+    def _restore_home_viewport(self):
+        if not self.isVisible() or self.central_stack.currentWidget() is not self.home_page:
+            return
+        self.plotter.show()
+        self.plotter.reset_camera_clipping_range()
+        self.plotter.render()
+        self.animation_start = time.monotonic()
+        self.animation_timer.start()
 
 
 def main():

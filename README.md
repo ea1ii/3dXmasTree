@@ -70,6 +70,8 @@ Choose **Setup Color** to step through all six RGB channel orders. The default t
 
 Choose **Setup LED Length** to light one LED at a time while the laptop image refreshes. **Next** advances to the next LED; **Previous** returns to the prior LED and is disabled at LED 1. When the displayed LED does not light, **Done** treats it as beyond the strip and saves the previous number as `led.led_count` on both PC and Pi. **Abort** cancels without changing the saved count. `led.test_count` (1000 by default) is the maximum address the test will try; increase it if the strip is longer.
 
+Choose **Calibrate** and select a timestamped folder under `pc_agent/frames/`. Calibration detects the brightest spot in each image, matches Front/Back and Left/Right detections within the adjustable tolerance, builds 3D points, and adjusts consecutive points that exceed `led.maxLEDdist`. The four flat views can independently show their source picture or the geometric model; the shared controls navigate frames and switch all views. Review point status and coordinates in the table and 3D model, then save `positions_<source timestamp>.json` beside the source frames. The file records LED index and X/Y/Z coordinates in millimeters.
+
 `led.maxLEDdist` is a physical distance in millimeters (currently `120`). Camera images remain measured in pixels; this setting does not change image dimensions.
 
 `camera.frame_height_mm` is currently assumed to be `1500`, the physical vertical span covered by a captured frame. Pixel-to-millimeter conversion is not applied yet.
