@@ -172,7 +172,65 @@ class LengthTest:
         self.current_led = None
 
 
-def make_handler(color_test, token, length_test=None):
+class PositionCaptureTest:
+    def __init__(self, settings, hardware):
+        self.settings = settings
+        self.hardware = hardware
+        self.strip = None
+        self.current_led = None
+        self.led_count = None
+
+    def start(self):
+        if self.current_led is not None:
+            raise RuntimeError("A position capture loop is already running")
+        led_settings = self.settings["led"]
+        self.led_count = led_settings.get("capture_test_led_count", 5)
+        if not isinstance(self.led_count, int) or not 1 <= self.led_count <= 10000:
+            raise ValueError("led.capture_test_led_count must be between 1 and 10000")
+
+        pixel_order = led_settings.get("pixel_order") or "GRB"
+        if self.hardware:
+            self.strip = NeoPixelStrip(
+                self.led_count,
+                led_settings["pin"],
+                led_settings["brightness"],
+                pixel_order,
+            )
+        else:
+            self.strip = SimulatedStrip(self.led_count, pixel_order)
+
+        self.current_led = 1
+        self._show_current_led()
+        return self.status()
+
+    def _show_current_led(self):
+        self.strip.set_one(self.current_led - 1, (255, 255, 255))
+        print(
+            f"Position capture: LED {self.current_led}/{self.led_count}",
+            flush=True,
+        )
+
+    def status(self):
+        return {"current_led": self.current_led, "led_count": self.led_count}
+
+    def next(self):
+        if self.current_led is None:
+            raise RuntimeError("No position capture loop is running")
+        if self.current_led >= self.led_count:
+            raise ValueError("Already at the final test LED")
+        self.current_led += 1
+        self._show_current_led()
+        return self.status()
+
+    def stop(self):
+        if self.strip is not None:
+            self.strip.close()
+            self.strip = None
+        self.current_led = None
+        self.led_count = None
+
+
+def make_handler(color_test, token, length_test=None, position_test=None):
     class Handler(BaseHTTPRequestHandler):
         def _send(self, status_code, body):
             payload = json.dumps(body).encode("utf-8")
@@ -218,6 +276,13 @@ def make_handler(color_test, token, length_test=None):
                     result = length_test.done()
                 elif self.path == "/length-test/abort" and length_test is not None:
                     result = length_test.abort()
+                elif self.path == "/position/start" and position_test is not None:
+                    result = position_test.start()
+                elif self.path == "/position/next" and position_test is not None:
+                    result = position_test.next()
+                elif self.path == "/position/stop" and position_test is not None:
+                    position_test.stop()
+                    result = {"stopped": True}
                 elif self.path == "/shutdown":
                     result = {"shutdown": "requested"}
                     self._send(200, result)
@@ -260,8 +325,12 @@ def main():
 
     color_test = ColorTest(settings, args.hardware)
     length_test = LengthTest(settings, args.hardware)
+    position_test = PositionCaptureTest(settings, args.hardware)
     address = ("0.0.0.0", settings["agents"]["pi"]["port"])
-    server = ThreadingHTTPServer(address, make_handler(color_test, token, length_test))
+    server = ThreadingHTTPServer(
+        address,
+        make_handler(color_test, token, length_test, position_test),
+    )
     print(f"Pi agent listening on port {address[1]} ({'hardware' if args.hardware else 'simulation'})")
     exit_monitor = start_exit_key_monitor(server.shutdown)
     try:
@@ -273,6 +342,7 @@ def main():
             exit_monitor.stop()
         color_test.stop()
         length_test.stop()
+        position_test.stop()
         server.server_close()
         print("Pi agent stopped.", flush=True)
 

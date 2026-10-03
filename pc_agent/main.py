@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 import math
+import os
 import random
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +26,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QToolBar,
     QVBoxLayout,
@@ -758,6 +761,340 @@ class LengthSetupDialog(QDialog):
         self._finish_when_image_idle(QDialog.DialogCode.Rejected)
 
 
+class PositionCapturePage(QDialog):
+    VIEWS = ("front", "right", "left", "back")
+
+    def __init__(self, parent, settings, output_directory):
+        super().__init__(parent)
+        self.settings = settings
+        self.output_directory = output_directory
+        self.output_directory.mkdir(parents=True, exist_ok=False)
+        self.led_count = settings["led"].get("capture_test_led_count", 5)
+        self.worker = None
+        self.pending_result = None
+        self.pending_error = None
+        self.pending_success = None
+        self.busy = False
+        self.abort_requested = False
+        self.cleanup_kind = None
+        self.cleanup_error = None
+        self.position_active = False
+        self.view_index = 0
+        self.current_led = None
+        self.saved_count = 0
+
+        self.setWindowTitle("Grab Positions")
+        self.setWindowFlags(Qt.WindowType.Widget)
+        self.setModal(False)
+
+        layout = QVBoxLayout(self)
+        self.title_label = QLabel("Grab Positions")
+        self.title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
+        layout.addWidget(self.title_label)
+
+        self.instruction_label = QLabel()
+        self.instruction_label.setWordWrap(True)
+        layout.addWidget(self.instruction_label)
+
+        self.progress_label = QLabel(f"0 / {len(self.VIEWS) * self.led_count} images")
+        layout.addWidget(self.progress_label)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, len(self.VIEWS) * self.led_count)
+        self.progress_bar.setValue(0)
+        layout.addWidget(self.progress_bar)
+
+        self.image_label = QLabel("No capture yet")
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setMinimumSize(520, 360)
+        self.image_label.setStyleSheet("background: #20242a; color: white;")
+        layout.addWidget(self.image_label, 1)
+
+        self.file_label = QLabel(str(output_directory))
+        self.file_label.setWordWrap(True)
+        layout.addWidget(self.file_label)
+
+        button_layout = QHBoxLayout()
+        self.begin_button = QPushButton()
+        self.abort_button = QPushButton("Abort")
+        self.begin_button.setMinimumHeight(36)
+        self.abort_button.setMinimumHeight(36)
+        self.begin_button.clicked.connect(self._begin_view)
+        self.abort_button.clicked.connect(self._abort)
+        button_layout.addWidget(self.begin_button)
+        button_layout.addWidget(self.abort_button)
+        layout.addLayout(button_layout)
+
+        self._show_view_prompt()
+
+    def _show_view_prompt(self):
+        view = self.VIEWS[self.view_index]
+        if view == "front":
+            instruction = (
+                "Face the FRONT of the tree toward the webcam. Confirm when it is "
+                "steady; the Pi will light each test LED and capture it automatically."
+            )
+        else:
+            instruction = (
+                f"Rotate the tree so its {view.upper()} faces the webcam. "
+                "Confirm when it is steady to start this sweep."
+            )
+        self.instruction_label.setText(instruction)
+        self.begin_button.setText(f"Confirm {view.title()} and Begin")
+        self.begin_button.setEnabled(not self.busy and not self.abort_requested)
+
+    def _run_operation(self, operation, on_success):
+        self.busy = True
+        self.pending_result = None
+        self.pending_error = None
+        self.pending_success = on_success
+        self.begin_button.setEnabled(False)
+        self.abort_button.setEnabled(not self.abort_requested)
+        self.worker = OperationWorker(operation, self)
+        self.worker.succeeded.connect(self._store_result)
+        self.worker.failed.connect(self._store_error)
+        self.worker.finished.connect(self._worker_finished)
+        self.worker.start()
+
+    def _store_result(self, result):
+        self.pending_result = result
+
+    def _store_error(self, message):
+        self.pending_error = message
+
+    def _worker_finished(self):
+        worker = self.worker
+        self.worker = None
+        if worker is not None:
+            worker.deleteLater()
+        self.busy = False
+
+        if self.cleanup_kind is not None:
+            kind = self.cleanup_kind
+            self.cleanup_kind = None
+            self._finish_cleanup(kind, self.pending_result, self.pending_error)
+            return
+        if self.abort_requested:
+            self._begin_cleanup("abort")
+            return
+        if self.pending_error is not None:
+            self._begin_cleanup("failure", self.pending_error)
+            return
+
+        callback = self.pending_success
+        result = self.pending_result
+        self.pending_success = None
+        self.pending_result = None
+        callback(result)
+
+    def _begin_view(self):
+        if self.busy or self.abort_requested:
+            return
+        view = self.VIEWS[self.view_index]
+        self.instruction_label.setText(f"Starting {view.upper()} sweep...")
+        self._run_operation(
+            lambda: request_json(
+                "pi",
+                "/position/start",
+                self.settings,
+                method="POST",
+                payload={},
+            ),
+            self._view_started,
+        )
+
+    def _view_started(self, status):
+        self.position_active = True
+        if status["led_count"] != self.led_count:
+            self._begin_cleanup(
+                "failure",
+                AgentError(
+                "PC and Pi capture_test_led_count settings do not match "
+                    f"({self.led_count} vs {status['led_count']})"
+                ),
+            )
+            return
+        self.current_led = status["current_led"]
+        self._capture_current_led()
+
+    def _capture_current_led(self):
+        view = self.VIEWS[self.view_index]
+        led_number = self.current_led
+        filename = f"{view}_LED_{led_number:03d}.jpg"
+        image_path = self.output_directory / filename
+
+        def capture_and_save():
+            image = request_image("laptop", "/capture", self.settings)
+            temporary_path = image_path.with_suffix(".jpg.tmp")
+            temporary_path.write_bytes(image)
+            os.replace(temporary_path, image_path)
+            return image, image_path
+
+        self.instruction_label.setText(
+            f"{view.upper()} sweep: capturing LED {led_number} of {self.led_count}..."
+        )
+        self._run_operation(capture_and_save, self._capture_saved)
+
+    def _capture_saved(self, result):
+        image, image_path = result
+        pixmap = QPixmap()
+        if not pixmap.loadFromData(image):
+            self._begin_cleanup(
+                "failure",
+                AgentError(f"Saved image could not be displayed: {image_path.name}"),
+            )
+            return
+        self.image_label.setPixmap(
+            pixmap.scaled(
+                self.image_label.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        self.saved_count += 1
+        total = len(self.VIEWS) * self.led_count
+        self.progress_bar.setValue(self.saved_count)
+        self.progress_label.setText(f"{self.saved_count} / {total} images")
+        self.file_label.setText(f"Saved: {image_path}")
+
+        if self.current_led < self.led_count:
+            self._advance_led()
+        else:
+            self._stop_view()
+
+    def _advance_led(self):
+        self._run_operation(
+            lambda: request_json(
+                "pi",
+                "/position/next",
+                self.settings,
+                method="POST",
+                payload={},
+            ),
+            self._led_advanced,
+        )
+
+    def _led_advanced(self, status):
+        self.current_led = status["current_led"]
+        self._capture_current_led()
+
+    def _stop_view(self):
+        self._run_operation(
+            lambda: request_json(
+                "pi",
+                "/position/stop",
+                self.settings,
+                method="POST",
+                payload={},
+            ),
+            self._view_stopped,
+        )
+
+    def _view_stopped(self, _result):
+        self.position_active = False
+        if self.view_index + 1 < len(self.VIEWS):
+            self.view_index += 1
+            self._show_view_prompt()
+            return
+        self.instruction_label.setText("All four viewpoints captured. Stopping agents...")
+        self._begin_cleanup("complete")
+
+    def _abort(self):
+        if self.cleanup_kind is not None or self.abort_requested:
+            return
+        self.abort_requested = True
+        self.begin_button.setEnabled(False)
+        self.abort_button.setEnabled(False)
+        self.instruction_label.setText("Abort requested; waiting for the current request...")
+        if not self.busy:
+            self._begin_cleanup("abort")
+
+    def _begin_cleanup(self, kind, error=None):
+        self.cleanup_kind = kind
+        self.cleanup_error = error
+
+        def stop_agents():
+            failures = {}
+            if self.position_active:
+                try:
+                    request_json(
+                        "pi",
+                        "/position/stop",
+                        self.settings,
+                        method="POST",
+                        payload={},
+                    )
+                except AgentError as stop_error:
+                    failures["pi position test"] = str(stop_error)
+                self.position_active = False
+            failures.update(request_remote_agent_shutdowns(self.settings))
+            return failures
+
+        self._run_operation(stop_agents, lambda _result: None)
+
+    def _finish_cleanup(self, kind, failures, cleanup_error):
+        failures = failures or {}
+        if cleanup_error:
+            failures["shutdown"] = cleanup_error
+
+        if kind == "complete":
+            title = "Position Capture Complete"
+            message = (
+                f"Saved {self.saved_count} images to:\n{self.output_directory}\n\n"
+                "The Pi and laptop agents were asked to stop. Close their SSH sessions."
+            )
+            if failures:
+                details = "\n".join(
+                    f"{agent}: {failure}" for agent, failure in failures.items()
+                )
+                message += f"\n\nSome shutdown requests failed:\n{details}"
+                QMessageBox.warning(self, title, message)
+            else:
+                QMessageBox.information(self, title, message)
+            self.accept()
+            return
+
+        if kind == "abort":
+            message = (
+                f"Capture aborted. {self.saved_count} completed images remain in:\n"
+                f"{self.output_directory}\n\n"
+                "The Pi and laptop agents were asked to stop. Close their SSH sessions."
+            )
+            if failures:
+                details = "\n".join(
+                    f"{agent}: {failure}" for agent, failure in failures.items()
+                )
+                message += f"\n\nSome shutdown requests failed:\n{details}"
+                QMessageBox.warning(self, "Position Capture Aborted", message)
+            else:
+                QMessageBox.information(self, "Position Capture Aborted", message)
+            self.reject()
+            return
+
+        details = "\n".join(
+            f"{agent}: {failure}" for agent, failure in failures.items()
+        )
+        QMessageBox.critical(
+            self,
+            "Position Capture Failed",
+            f"{self.cleanup_error or 'Capture failed.'}\n\n"
+            f"{self.saved_count} completed images remain in:\n{self.output_directory}\n\n"
+            f"Shutdown issues:\n{details or 'None'}",
+        )
+        self.reject()
+
+    def reject(self):
+        if self.cleanup_kind is not None:
+            return
+        if self.busy:
+            self._abort()
+            return
+        if self.saved_count or self.position_active:
+            self._abort()
+            return
+        self._begin_cleanup("abort")
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -786,6 +1123,11 @@ class MainWindow(QMainWindow):
         setup_length_button.setMinimumHeight(36)
         setup_length_button.clicked.connect(self._setup_length)
         button_layout.addWidget(setup_length_button)
+
+        grab_positions_button = QPushButton("Grab Positions", button_panel)
+        grab_positions_button.setMinimumHeight(36)
+        grab_positions_button.clicked.connect(self._grab_positions)
+        button_layout.addWidget(grab_positions_button)
 
         exit_button = QPushButton("Exit", button_panel)
         exit_button.setMinimumHeight(36)
@@ -1013,6 +1355,60 @@ class MainWindow(QMainWindow):
             )
             return
         self._show_workflow(LengthSetupDialog(self.central_stack, settings))
+
+    def _grab_positions(self):
+        response = QMessageBox.warning(
+            self,
+            "Grab Positions",
+            "Start the Pi agent and laptop camera agent first. For a real strip, "
+            "start the Pi with --hardware; otherwise captures will use simulation.\n\n"
+            "You will be asked to orient the tree to FRONT, RIGHT, LEFT, and BACK.\n\n"
+            "Continue when both agents are running and reachable.",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if response != QMessageBox.StandardButton.Ok:
+            return
+
+        try:
+            settings = load_settings()
+        except (OSError, ValueError) as error:
+            QMessageBox.critical(
+                self,
+                "Grab Positions",
+                f"Could not read settings: {error}",
+            )
+            return
+
+        led_count = settings["led"].get("capture_test_led_count", 5)
+        if not isinstance(led_count, int) or not 1 <= led_count <= 10000:
+            QMessageBox.critical(
+                self,
+                "Grab Positions",
+                "Set led.capture_test_led_count to a value from 1 to 10000.",
+            )
+            return
+
+        session_name = datetime.now().strftime("%Y%m%d_%H%M")
+        output_directory = PROJECT_ROOT / "frames" / session_name
+        if output_directory.exists():
+            QMessageBox.warning(
+                self,
+                "Grab Positions",
+                f"A capture folder already exists for {session_name}. "
+                "Start another session after the minute changes to avoid overwriting it.",
+            )
+            return
+        try:
+            page = PositionCapturePage(self.central_stack, settings, output_directory)
+        except OSError as error:
+            QMessageBox.critical(
+                self,
+                "Grab Positions",
+                f"Could not create the capture folder: {error}",
+            )
+            return
+        self._show_workflow(page)
 
     def _show_workflow(self, page):
         self.animation_timer.stop()
