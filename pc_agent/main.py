@@ -245,7 +245,8 @@ class ViewportDividerHandle(QWidget):
 class ViewportSplitControls(QObject):
     MIN_SPLIT = 0.2
     MAX_SPLIT = 0.8
-    HANDLE_SIZE = 12
+    HANDLE_SIZE = 16
+    DRAG_HIT_SLOP = 10
 
     def __init__(self, plotter, renderers):
         super().__init__(plotter)
@@ -263,13 +264,97 @@ class ViewportSplitControls(QObject):
             plotter,
             self._handle_moved,
         )
+        self.drag_axes = set()
+        self.divider_actors = []
+        self._build_divider_actors()
         plotter.installEventFilter(self)
+        for widget in plotter.findChildren(QWidget):
+            widget.installEventFilter(self)
         self._apply_split()
 
     def eventFilter(self, watched, event):
-        if watched is self.plotter and event.type() == QEvent.Type.Resize:
+        event_type = event.type()
+        if watched is self.plotter and event_type == QEvent.Type.Resize:
             self._position_handles()
+            return super().eventFilter(watched, event)
+        if not isinstance(watched, QWidget):
+            return super().eventFilter(watched, event)
+
+        mouse_events = (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseMove,
+            QEvent.Type.MouseButtonRelease,
+        )
+        if event_type not in mouse_events:
+            return super().eventFilter(watched, event)
+
+        point = event.position().toPoint()
+        if watched is not self.plotter:
+            point = watched.mapTo(self.plotter, point)
+        if event_type == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            self.drag_axes.clear()
+            vertical_x = self.split_x * self.plotter.width()
+            horizontal_y = self.split_top * self.plotter.height()
+            if abs(point.x() - vertical_x) <= self.DRAG_HIT_SLOP:
+                self.drag_axes.add("vertical")
+            if abs(point.y() - horizontal_y) <= self.DRAG_HIT_SLOP:
+                self.drag_axes.add("horizontal")
+            if self.drag_axes:
+                watched.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self.plotter.window().statusBar().showMessage("Resizing viewports")
+                return True
+        elif event_type == QEvent.Type.MouseMove and self.drag_axes and event.buttons() & Qt.MouseButton.LeftButton:
+            if "vertical" in self.drag_axes:
+                self.split_x = min(
+                    self.MAX_SPLIT,
+                    max(self.MIN_SPLIT, point.x() / max(1, self.plotter.width())),
+                )
+            if "horizontal" in self.drag_axes:
+                self.split_top = min(
+                    self.MAX_SPLIT,
+                    max(self.MIN_SPLIT, point.y() / max(1, self.plotter.height())),
+                )
+            self._apply_split()
+            return True
+        elif event_type == QEvent.Type.MouseButtonRelease and self.drag_axes:
+            self.drag_axes.clear()
+            watched.unsetCursor()
+            self.plotter.window().statusBar().showMessage("Ready")
+            return True
         return super().eventFilter(watched, event)
+
+    def _build_divider_actors(self):
+        edges = {
+            "Front": (((1, 0), (1, 1)), ((0, 0), (1, 0))),
+            "Right": (((0, 0), (0, 1)), ((0, 0), (1, 0))),
+            "Top": (((1, 0), (1, 1)), ((0, 1), (1, 1))),
+            "Iso": (((0, 0), (0, 1)), ((0, 1), (1, 1))),
+        }
+        for name, renderer in self.renderers.items():
+            for first, second in edges[name]:
+                self.divider_actors.append(
+                    self._add_divider_line(renderer, first, second, (0.02, 0.07, 0.08), 8)
+                )
+                self.divider_actors.append(
+                    self._add_divider_line(renderer, first, second, (0.08, 0.85, 0.84), 4)
+                )
+
+    @staticmethod
+    def _add_divider_line(renderer, first, second, color, width):
+        source = pv._vtk.vtkLineSource()
+        source.SetPoint1(first[0], first[1], 0)
+        source.SetPoint2(second[0], second[1], 0)
+        mapper = pv._vtk.vtkPolyDataMapper2D()
+        mapper.SetInputConnection(source.GetOutputPort())
+        coordinate = pv._vtk.vtkCoordinate()
+        coordinate.SetCoordinateSystemToNormalizedViewport()
+        mapper.SetTransformCoordinate(coordinate)
+        actor = pv._vtk.vtkActor2D()
+        actor.SetMapper(mapper)
+        actor.GetProperty().SetColor(*color)
+        actor.GetProperty().SetLineWidth(width)
+        renderer.AddViewProp(actor)
+        return actor
 
     def _handle_moved(self, orientation, x, y):
         if orientation == Qt.Orientation.Vertical:
@@ -286,6 +371,8 @@ class ViewportSplitControls(QObject):
         horizontal_y = round(self.split_top * height) - half_handle
         self.vertical_handle.setGeometry(vertical_x, 0, self.HANDLE_SIZE, height)
         self.horizontal_handle.setGeometry(0, horizontal_y, width, self.HANDLE_SIZE)
+        self.vertical_handle.show()
+        self.horizontal_handle.show()
         self.vertical_handle.raise_()
         self.horizontal_handle.raise_()
 

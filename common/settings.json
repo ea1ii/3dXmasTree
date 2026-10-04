@@ -31,7 +31,7 @@
   "simulation": {
     "tree_luminosity_percent": 100,
     "tree_transparency_percent": 90,
-    "background_luminosity_percent": 27
+    "background_luminosity_percent": 29
   },
   "night_schedule": {
     "latitude": 50.9283333333,

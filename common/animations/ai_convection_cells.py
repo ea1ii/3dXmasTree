@@ -6,7 +6,7 @@ from common.animations.ai_base import SpatialAnimation, _rgb
 class ConvectionCells(SpatialAnimation):
     name = "ai_convection_cells"
     author = "Carlos Gil & AI"
-    version = "0.1.1"
+    version = "0.1.2"
     description = "A buoyant heat field circulates in rising and sinking convection cells."
 
     def _initialise_effect(self, _parameters):
@@ -51,6 +51,6 @@ class ConvectionCells(SpatialAnimation):
             heat = self.temperature[level][sector]
             vertical_speed = self.velocity[level][sector]
             hue = 0.58 - 0.52 * heat if vertical_speed >= 0 else 0.58 + 0.08 * (1 - heat)
-            intensity = min(1.0, 0.24 + heat * 1.8)
+            intensity = min(1.0, 0.42 + heat * 0.58)
             frame.append(tuple(round(channel * intensity) for channel in _rgb(hue, 0.9, 1)))
         return frame
