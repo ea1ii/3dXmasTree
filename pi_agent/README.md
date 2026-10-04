@@ -30,4 +30,12 @@ pwsh -File ./pi_agent/3dXmasTree.ps1
 
 Useful options are `-ListAnimations`, `-Once`, `-Fps 60`, `-SecondsPerAnimation 5`, and `-Hardware`. In hardware mode, calibrate and set `led.led_count` first. Without `-Hardware`, the engine uses the simulated strip and defaults to `led.capture_test_led_count`.
 
+### Night Schedule
+
+Continuous animation playback remains the default. Add `--night-schedule` when running the Python engine, or `-NightSchedule` with the PowerShell launcher, to keep the LEDs off during the day and play random effects between adjusted sunset and sunrise. The Pi's configured local timezone is used for daylight-saving changes.
+
+Set `night_schedule.latitude` and `night_schedule.longitude` in `common/settings.json` before enabling the schedule. `sunset_offset_minutes` and `sunrise_offset_minutes` shift those events; positive values delay them and negative values advance them. `opening_animation` and `closing_animation` are optional animation names. When set, they run once at the start and end of each night and are excluded from the random middle-of-night selection. Leave either blank to omit it.
+
+`--once` with night scheduling waits for and runs one scheduled night, then exits.
+
 Shared animations belong under `common/animations`. Put any third-party animation dependencies in a `requirements*.txt` file in that animation folder tree; the launcher discovers these recursively.

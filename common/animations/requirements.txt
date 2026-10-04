@@ -1,2 +1,4 @@
 # Add third-party Python packages required by shared animation classes here.
 # The Pi animation launcher also scans nested animation folders for requirements*.txt.
+astral>=3.2,<4
+tzlocal>=5,<6

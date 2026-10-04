@@ -3,6 +3,7 @@ param(
     [switch]$Hardware,
     [switch]$Once,
     [switch]$ListAnimations,
+    [switch]$NightSchedule,
     [double]$Fps,
     [double]$SecondsPerAnimation
 )
@@ -79,6 +80,7 @@ if ($PSBoundParameters.ContainsKey("SecondsPerAnimation")) {
 if ($Hardware) { $EngineArguments += "--hardware" }
 if ($Once) { $EngineArguments += "--once" }
 if ($ListAnimations) { $EngineArguments += "--list-animations" }
+if ($NightSchedule) { $EngineArguments += "--night-schedule" }
 
 Write-Host "Starting Pi animation engine..."
 & $Python @EngineArguments
