@@ -51,13 +51,13 @@ powershell -ExecutionPolicy Bypass -File .\laptop_agent\run.ps1
 In the Pi's SSH terminal, from the repository root:
 
 ```console
-./pi_agent/run.sh
+./pi_agent/agent_server.sh
 ```
 
 The first run asks for the same PC token using a hidden prompt and saves it under `~/.config/3dXmasTree`, outside the repository. By default, the Pi runs in simulation mode. Hardware dependencies are installed only when requested:
 
 ```console
-./pi_agent/run.sh --hardware
+./pi_agent/agent_server.sh --hardware
 ```
 
 Do not use `--hardware` until the strip, power supply, LED count, pin, and color order are verified.
@@ -82,7 +82,7 @@ For simulated position captures, LED 1 starts at the tree-base center. The remai
 
 When synthetic lights are enabled, the capture page also shows that same 3D tree as a translucent model, with solid LED markers and links between consecutive LEDs; the currently lit LED is highlighted before its image is captured.
 
-Before using the Pi's physical strip, set its correct host, test limit, pin, brightness, color order, and camera host in `common/settings.json`. Run **Setup LED Length** to measure and store `led.led_count`; `led.test_count` is only the scan limit. Start the Pi with `./pi_agent/run.sh --hardware`. The current code assumes a three-channel NeoPixel-compatible strip.
+Before using the Pi's physical strip, set its correct host, test limit, pin, brightness, color order, and camera host in `common/settings.json`. Run **Setup LED Length** to measure and store `led.led_count`; `led.test_count` is only the scan limit. Start the Pi with `./pi_agent/agent_server.sh --hardware`. The current code assumes a three-channel NeoPixel-compatible strip.
 
 ## Acknowledgements
 

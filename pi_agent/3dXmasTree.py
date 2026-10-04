@@ -367,7 +367,11 @@ def main():
         dest="night_schedule",
         help="Run opening, random night, and closing animations based on local sunrise/sunset.",
     )
-    parser.add_argument("--once", action="store_true", help="Run each animation once and exit.")
+    parser.add_argument(
+        "--once",
+        metavar="ANIMATION",
+        help="Play only this animation until Ctrl+Q (or Ctrl+F4) is pressed.",
+    )
     parser.add_argument("--list-animations", action="store_true", help="List discovered animations and exit.")
     args = parser.parse_args()
 
@@ -400,6 +404,17 @@ def main():
                 f"by {animation_class.author}: {animation_class.description}"
             )
         return 0
+
+    once_animation = None
+    if args.once is not None:
+        if args.night_schedule:
+            parser.error("--once cannot be combined with --night-schedule")
+        once_animation = next(
+            (animation for animation in animations if animation.name == args.once),
+            None,
+        )
+        if once_animation is None:
+            parser.error(f"--once refers to unknown animation {args.once!r}")
 
     night_schedule = None
     opening_animation = ""
@@ -474,8 +489,24 @@ def main():
                 args.seconds_per_animation,
                 {"positions": animation_positions} if animation_positions else None,
                 stop_event,
-                once=args.once,
             )
+        elif once_animation is not None:
+            print(
+                f"Playing {once_animation.name} v{once_animation.version} "
+                f"by {once_animation.author} until Ctrl+Q.",
+                flush=True,
+            )
+            _, animation_error = execute_animation(
+                once_animation,
+                strip,
+                led_count,
+                math.inf,
+                fps,
+                stop_event,
+                {"positions": animation_positions} if animation_positions else None,
+            )
+            if animation_error is not None:
+                return cycles_completed
         else:
             while not stop_event.is_set():
                 for animation_class in animations:
@@ -516,8 +547,6 @@ def main():
                 cycles_completed += 1
                 if len(failed_animations) == len(animations):
                     print("All animations failed; stopping the Pi engine.", file=sys.stderr, flush=True)
-                    break
-                if args.once:
                     break
     except KeyboardInterrupt:
         print("Keyboard interrupt; stopping animation engine.", flush=True)
