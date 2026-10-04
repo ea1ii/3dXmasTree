@@ -6,16 +6,17 @@ from common.animations.ai_base import SpatialAnimation, _distance, _rgb
 class Afterimage(SpatialAnimation):
     name = "ai_afterimage"
     author = "Carlos Gil & AI"
+    version = "0.1.1"
     description = "A bright 3D traveler leaves a slowly fading color echo."
 
     def _initialise_effect(self, _parameters):
         self.trail = [0.0] * self.led_count
         self.hue = self.generator.random()
-        self.speed = self.generator.uniform(0.12, 0.24)
-        self.width = max(self.tree_radius * 0.12, 0.025)
+        self.speed = self.generator.uniform(0.2, 0.38)
+        self.width = max(self.tree_radius * 0.25, 0.06)
 
     def _render_frame(self, delta):
-        fade = math.exp(-delta * 0.65)
+        fade = math.exp(-delta * 0.22)
         self.trail = [value * fade for value in self.trail]
         phase = (self.elapsed * self.speed) % 1.0
         center = (

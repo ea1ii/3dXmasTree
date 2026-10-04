@@ -30,8 +30,8 @@
   },
   "simulation": {
     "tree_luminosity_percent": 100,
-    "tree_transparency_percent": 81,
-    "background_luminosity_percent": 20
+    "tree_transparency_percent": 90,
+    "background_luminosity_percent": 27
   },
   "night_schedule": {
     "latitude": 50.9283333333,

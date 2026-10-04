@@ -6,6 +6,7 @@ from common.animations.ai_base import SpatialAnimation, _distance, _rgb
 class Dandelion(SpatialAnimation):
     name = "ai_dandelion"
     author = "Carlos Gil & AI"
+    version = "0.1.2"
     description = "Tiny colored seeds drift outward from a glowing center."
 
     def _initialise_effect(self, _parameters):
@@ -19,7 +20,7 @@ class Dandelion(SpatialAnimation):
                 _rgb(self.generator.random(), 0.8, 1),
                 self.generator.random(),
             )
-            for _ in range(24)
+            for _ in range(144)
         ]
 
     def _render_frame(self, _delta):
@@ -33,7 +34,7 @@ class Dandelion(SpatialAnimation):
             )
             fade = max(0.0, 1.0 - ((self.elapsed * speed + phase) % 1.0))
             for index, point in enumerate(self.positions):
-                glow = math.exp(-(_distance(point, center) / max(self.tree_radius * 0.055, 0.012)) ** 2) * fade
-                if glow > 0.15:
+                glow = math.exp(-(_distance(point, center) / max(self.tree_radius * 0.14, 0.032)) ** 2) * fade
+                if glow > 0.06:
                     frame[index] = tuple(round(channel * glow) for channel in color)
         return frame

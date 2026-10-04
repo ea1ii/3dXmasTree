@@ -6,13 +6,14 @@ from common.animations.ai_base import SpatialAnimation, _distance, _rgb
 class BouncingMass(SpatialAnimation):
     name = "ai_bouncing_mass"
     author = "Carlos Gil & AI"
+    version = "0.1.2"
     description = "A gravity-driven luminous mass bounces with diminishing restitution."
 
     def _initialise_effect(self, _parameters):
-        self.radius = max(self.tree_radius * 0.12, 0.025)
+        self.radius = max(self.tree_radius * 0.78, self.height * 0.2, 0.1)
         self.gravity = 2.8 * self.height
         self.restitution = 0.78
-        self.position = [0.0, 0.0, self.height * 0.85]
+        self.position = [0.0, 0.0, self.height * 0.78]
         self.velocity = [self.tree_radius * 0.3, 0.0, 0.0]
         self.color = _rgb(self.generator.uniform(0.04, 0.15), 0.9, 1)
         self.substep = 1 / 120

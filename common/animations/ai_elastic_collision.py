@@ -6,27 +6,32 @@ from common.animations.ai_base import SpatialAnimation, _distance, _rgb
 class ElasticCollision(SpatialAnimation):
     name = "ai_elastic_collision"
     author = "Carlos Gil & AI"
+    version = "0.1.2"
     description = "Luminous spheres exchange momentum in elastic 3D collisions."
 
     def _initialise_effect(self, _parameters):
-        self.radius = max(self.tree_radius * 0.1, 0.025)
-        self.boundary = max(self.tree_radius * 0.9, 0.08)
+        self.radius = max(self.tree_radius * 0.32, self.height * 0.1, 0.05)
+        self.boundary = max(self.tree_radius * 0.92, self.height * 0.42, 0.12)
+        self.center_z = self.height * 0.5
         self.balls = []
-        for index in range(4):
-            angle = index * math.pi / 2
-            position = [self.boundary * 0.45 * math.cos(angle), self.boundary * 0.45 * math.sin(angle), self.height * (0.3 + index * 0.13)]
-            velocity = [self.generator.uniform(-0.45, 0.45), self.generator.uniform(-0.45, 0.45), self.generator.uniform(-0.4, 0.4)]
-            self.balls.append({"position": position, "velocity": velocity, "color": _rgb(index / 4, 0.88, 1)})
+        self.ball_count = 8
+        for index in range(self.ball_count):
+            angle = 2 * math.pi * index / self.ball_count + self.generator.uniform(-0.12, 0.12)
+            radial = self.boundary * self.generator.uniform(0.28, 0.62)
+            position = [radial * math.cos(angle), radial * math.sin(angle), self.center_z + self.height * self.generator.uniform(-0.24, 0.24)]
+            velocity = [self.generator.uniform(-1.4, 1.4), self.generator.uniform(-1.4, 1.4), self.generator.uniform(-1.2, 1.2)]
+            self.balls.append({"position": position, "velocity": velocity, "color": _rgb(index / self.ball_count, 0.88, 1)})
 
     def _render_frame(self, delta):
         for ball in self.balls:
             for axis in range(3):
                 ball["position"][axis] += ball["velocity"][axis] * delta
-            distance = math.sqrt(sum(value * value for value in ball["position"]))
+            relative_position = [ball["position"][0], ball["position"][1], ball["position"][2] - self.center_z]
+            distance = math.sqrt(sum(value * value for value in relative_position))
             limit = self.boundary - self.radius
             if distance > limit:
-                normal = [value / distance for value in ball["position"]]
-                ball["position"] = [normal[axis] * limit for axis in range(3)]
+                normal = [value / distance for value in relative_position]
+                ball["position"] = [normal[0] * limit, normal[1] * limit, self.center_z + normal[2] * limit]
                 speed_out = sum(ball["velocity"][axis] * normal[axis] for axis in range(3))
                 if speed_out > 0:
                     ball["velocity"] = [ball["velocity"][axis] - 2 * speed_out * normal[axis] for axis in range(3)]

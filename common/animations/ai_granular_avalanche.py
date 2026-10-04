@@ -6,11 +6,13 @@ from common.animations.ai_base import SpatialAnimation, _distance, _rgb
 class GranularAvalanche(SpatialAnimation):
     name = "ai_granular_avalanche"
     author = "Carlos Gil & AI"
+    version = "0.1.2"
     description = "Grains accelerate down branches and collide in small avalanches."
 
     def _initialise_effect(self, _parameters):
-        self.gravity = 1.1 * self.height
-        self.grains = [self._new_grain() for _ in range(18)]
+        self.gravity = 3.0 * self.height
+        self.grain_count = 80
+        self.grains = [self._new_grain() for _ in range(self.grain_count)]
         self.color = _rgb(0.09, 0.8, 1)
 
     def _new_grain(self):
@@ -20,8 +22,8 @@ class GranularAvalanche(SpatialAnimation):
         return {
             "angle": angle,
             "height": height,
-            "speed": self.generator.uniform(0.0, 0.15) * self.height,
-            "stick_angle": self.generator.uniform(0.25, 0.55),
+            "speed": self.generator.uniform(0.25, 0.6) * self.height,
+            "stick_angle": self.generator.uniform(0.18, 0.48),
         }
 
     def _render_frame(self, delta):
@@ -41,12 +43,19 @@ class GranularAvalanche(SpatialAnimation):
             for second in self.grains[first_index + 1:]:
                 angular_distance = abs((first["angle"] - second["angle"] + math.pi) % (2 * math.pi) - math.pi)
                 if angular_distance < 0.22 and abs(first["height"] - second["height"]) < self.height * 0.055:
-                    first["speed"], second["speed"] = second["speed"] * 0.75, first["speed"] * 0.75
-        frame = [(0, 0, 0)] * self.led_count
+                    first["speed"], second["speed"] = (
+                        second["speed"] * 0.9 + self.height * 0.08,
+                        first["speed"] * 0.9 + self.height * 0.08,
+                    )
+        frame_strength = [0.0] * self.led_count
         for grain in self.grains:
-            radius = self.tree_radius * (1 - grain["height"] / self.height) * 0.9
+            radius = self.tree_radius * (1 - grain["height"] / self.height) * 0.92
             center = (radius * math.cos(grain["angle"]), radius * math.sin(grain["angle"]), grain["height"])
-            for index, point in enumerate(self.positions):
-                if _distance(point, center) < max(self.tree_radius * 0.09, 0.02):
-                    frame[index] = self.color
-        return frame
+            nearest = min(range(self.led_count), key=lambda index: _distance(self.positions[index], center))
+            speed_factor = min(1.0, grain["speed"] / max(self.height * 0.5, 1e-6))
+            for offset in range(-3, 4):
+                index = nearest + offset
+                if 0 <= index < self.led_count:
+                    strength = max(0.0, 1.0 - abs(offset) / 4) * (0.6 + 0.4 * speed_factor)
+                    frame_strength[index] = max(frame_strength[index], strength)
+        return [tuple(round(channel * strength) for channel in self.color) for strength in frame_strength]

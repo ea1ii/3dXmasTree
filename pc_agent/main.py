@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
 import pyvista as pv
 from PySide6.QtGui import QAction, QColor, QKeySequence, QPainter, QPen, QPixmap
-from PySide6.QtCore import QRectF, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QRectF, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -63,6 +63,242 @@ from calibration_model import (
     source_timestamp,
 )
 from position_model import generate_strip_positions, render_led_frame
+
+
+class OrthographicRotationFilter(QObject):
+    ORTHOGRAPHIC_VIEW_NAMES = frozenset(("Front", "Right", "Top"))
+
+    def __init__(self, parent, plotter, view_renderers):
+        super().__init__(parent)
+        self.plotter = plotter
+        self.view_renderers = view_renderers
+        self.pointer_generation = 0
+        self.last_drag_position = None
+
+    def _plotter_position(self, watched, event):
+        point = event.position().toPoint()
+        if watched is not self.plotter and isinstance(watched, QWidget):
+            point = watched.mapTo(self.plotter, point)
+        return point.x(), point.y()
+
+    def _view_name_at(self, x, y):
+        width = max(1, self.plotter.width())
+        height = max(1, self.plotter.height())
+        normalized_x = x / width
+        normalized_y = 1.0 - y / height
+        for name, renderer in self.view_renderers.items():
+            x_min, y_min, x_max, y_max = renderer.GetViewport()
+            if x_min <= normalized_x <= x_max and y_min <= normalized_y <= y_max:
+                return name
+        return "3D"
+
+    def is_orthographic_at(self, x, y):
+        return self._view_name_at(x, y) in self.ORTHOGRAPHIC_VIEW_NAMES
+
+    def _show_action(self, action, message, watched):
+        watched.setCursor(action)
+        window = self.parent()
+        if window is not None and hasattr(window, "statusBar"):
+            window.statusBar().showMessage(message)
+
+    def _reset_action(self, watched):
+        if isinstance(watched, QWidget):
+            watched.unsetCursor()
+        window = self.parent()
+        if window is not None and hasattr(window, "statusBar"):
+            window.statusBar().showMessage("Ready")
+
+    def eventFilter(self, watched, event):
+        event_type = event.type()
+        mouse_event_types = (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonDblClick,
+            QEvent.Type.MouseMove,
+            QEvent.Type.MouseButtonRelease,
+            QEvent.Type.Wheel,
+        )
+        if event_type not in mouse_event_types:
+            return super().eventFilter(watched, event)
+        if not isinstance(watched, QWidget):
+            return super().eventFilter(watched, event)
+
+        x, y = self._plotter_position(watched, event)
+        view_name = self._view_name_at(x, y)
+        if event_type in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick):
+            button = event.button()
+            if button == Qt.MouseButton.LeftButton:
+                modifiers = event.modifiers()
+                shift_pan = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+                control_spin = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+                if view_name in self.ORTHOGRAPHIC_VIEW_NAMES and not shift_pan:
+                    return True
+                self.last_drag_position = (x, y)
+                self.pointer_generation += 1
+                if shift_pan:
+                    self._show_action(Qt.CursorShape.SizeAllCursor, f"Panning {view_name} view", watched)
+                elif control_spin:
+                    self._show_action(Qt.CursorShape.ClosedHandCursor, f"Spinning {view_name} view", watched)
+                else:
+                    self._show_action(Qt.CursorShape.ClosedHandCursor, "Orbiting Iso view", watched)
+            elif button == Qt.MouseButton.MiddleButton:
+                self.last_drag_position = (x, y)
+                self.pointer_generation += 1
+                self._show_action(Qt.CursorShape.SizeAllCursor, f"Panning {view_name} view", watched)
+            elif button == Qt.MouseButton.RightButton:
+                self.last_drag_position = (x, y)
+                self.pointer_generation += 1
+                self._show_action(Qt.CursorShape.SizeVerCursor, f"Zooming {view_name} view", watched)
+        elif event_type == QEvent.Type.MouseMove:
+            buttons = event.buttons()
+            if buttons & Qt.MouseButton.LeftButton:
+                modifiers = event.modifiers()
+                shift_pan = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
+                control_spin = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+                if view_name in self.ORTHOGRAPHIC_VIEW_NAMES and not shift_pan:
+                    return True
+                x_delta = 0
+                y_delta = 0
+                if self.last_drag_position is not None:
+                    x_delta = abs(x - self.last_drag_position[0])
+                    y_delta = abs(y - self.last_drag_position[1])
+                self.last_drag_position = (x, y)
+                if shift_pan:
+                    self._show_action(Qt.CursorShape.SizeAllCursor, f"Panning {view_name} view", watched)
+                elif control_spin:
+                    self._show_action(Qt.CursorShape.ClosedHandCursor, f"Spinning {view_name} view", watched)
+                else:
+                    activity = "Tilting" if y_delta > x_delta * 1.2 else "Orbiting"
+                    self._show_action(Qt.CursorShape.ClosedHandCursor, f"{activity} Iso view", watched)
+            elif buttons & Qt.MouseButton.MiddleButton:
+                self.last_drag_position = (x, y)
+                self._show_action(Qt.CursorShape.SizeAllCursor, f"Panning {view_name} view", watched)
+            elif buttons & Qt.MouseButton.RightButton:
+                self.last_drag_position = (x, y)
+                self._show_action(Qt.CursorShape.SizeVerCursor, f"Zooming {view_name} view", watched)
+        elif event_type == QEvent.Type.MouseButtonRelease:
+            if not event.buttons():
+                self.pointer_generation += 1
+                self.last_drag_position = None
+                self._reset_action(watched)
+        elif event_type == QEvent.Type.Wheel:
+            self.pointer_generation += 1
+            generation = self.pointer_generation
+            direction = "in" if event.angleDelta().y() > 0 else "out"
+            self._show_action(Qt.CursorShape.SizeVerCursor, f"Zooming {direction} in {view_name} view", watched)
+
+            def reset_wheel_cursor():
+                if generation == self.pointer_generation:
+                    self._reset_action(watched)
+
+            QTimer.singleShot(450, reset_wheel_cursor)
+        return super().eventFilter(watched, event)
+
+
+class ViewportDividerHandle(QWidget):
+    def __init__(self, orientation, parent, moved):
+        super().__init__(parent)
+        self.orientation = orientation
+        self.moved = moved
+        self.dragging = False
+        self.setCursor(
+            Qt.CursorShape.SplitHCursor
+            if orientation == Qt.Orientation.Vertical
+            else Qt.CursorShape.SplitVCursor
+        )
+        self.setToolTip("Drag to resize the viewports")
+        self.setStyleSheet(
+            "background-color: #32C7C8;"
+            "border: 1px solid #10252B;"
+            "border-radius: 2px;"
+        )
+        self.raise_()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.dragging = True
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.dragging and event.buttons() & Qt.MouseButton.LeftButton:
+            point = self.parentWidget().mapFromGlobal(event.globalPosition().toPoint())
+            self.moved(self.orientation, point.x(), point.y())
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.dragging = False
+            self.setCursor(
+                Qt.CursorShape.SplitHCursor
+                if self.orientation == Qt.Orientation.Vertical
+                else Qt.CursorShape.SplitVCursor
+            )
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
+class ViewportSplitControls(QObject):
+    MIN_SPLIT = 0.2
+    MAX_SPLIT = 0.8
+    HANDLE_SIZE = 12
+
+    def __init__(self, plotter, renderers):
+        super().__init__(plotter)
+        self.plotter = plotter
+        self.renderers = renderers
+        self.split_x = 0.5
+        self.split_top = 0.5
+        self.vertical_handle = ViewportDividerHandle(
+            Qt.Orientation.Vertical,
+            plotter,
+            self._handle_moved,
+        )
+        self.horizontal_handle = ViewportDividerHandle(
+            Qt.Orientation.Horizontal,
+            plotter,
+            self._handle_moved,
+        )
+        plotter.installEventFilter(self)
+        self._apply_split()
+
+    def eventFilter(self, watched, event):
+        if watched is self.plotter and event.type() == QEvent.Type.Resize:
+            self._position_handles()
+        return super().eventFilter(watched, event)
+
+    def _handle_moved(self, orientation, x, y):
+        if orientation == Qt.Orientation.Vertical:
+            self.split_x = min(self.MAX_SPLIT, max(self.MIN_SPLIT, x / max(1, self.plotter.width())))
+        else:
+            self.split_top = min(self.MAX_SPLIT, max(self.MIN_SPLIT, y / max(1, self.plotter.height())))
+        self._apply_split()
+
+    def _position_handles(self):
+        width = self.plotter.width()
+        height = self.plotter.height()
+        half_handle = self.HANDLE_SIZE // 2
+        vertical_x = round(self.split_x * width) - half_handle
+        horizontal_y = round(self.split_top * height) - half_handle
+        self.vertical_handle.setGeometry(vertical_x, 0, self.HANDLE_SIZE, height)
+        self.horizontal_handle.setGeometry(0, horizontal_y, width, self.HANDLE_SIZE)
+        self.vertical_handle.raise_()
+        self.horizontal_handle.raise_()
+
+    def _apply_split(self):
+        split_y = 1.0 - self.split_top
+        self.renderers["Front"].SetViewport(0.0, split_y, self.split_x, 1.0)
+        self.renderers["Right"].SetViewport(self.split_x, split_y, 1.0, 1.0)
+        self.renderers["Top"].SetViewport(0.0, 0.0, self.split_x, split_y)
+        self.renderers["Iso"].SetViewport(self.split_x, 0.0, 1.0, split_y)
+        self._position_handles()
+        for renderer in self.renderers.values():
+            renderer.ResetCameraClippingRange()
+        self.plotter.render()
 
 
 def discover_pc_animations():
@@ -2212,14 +2448,14 @@ class MainWindow(QMainWindow):
         reset_views_button.clicked.connect(lambda _checked=False: self._reset_current_3d_view())
         button_layout.addWidget(reset_views_button)
 
-        self.axes_action = QCheckBox("Axes", button_panel)
+        self.axes_action = QCheckBox("Axes (Iso)", button_panel)
         self.axes_action.setChecked(False)
         self.axes_action.toggled.connect(self._set_axes_visible)
         button_layout.addWidget(self.axes_action)
 
-        self.parallel_projection_action = QCheckBox("Parallel", button_panel)
+        self.parallel_projection_action = QCheckBox("Parallel (Iso)", button_panel)
         self.parallel_projection_action.setToolTip(
-            "Toggle between perspective (conical) and parallel projection"
+            "Toggle perspective/parallel projection in the isometric view; orthographic views stay parallel"
         )
         self.parallel_projection_action.setChecked(False)
         self.parallel_projection_action.toggled.connect(self._set_parallel_projection)
@@ -2227,14 +2463,21 @@ class MainWindow(QMainWindow):
 
         self.viewport_help_label = QLabel(
             "3D VIEW CONTROLS\n"
-            "Left-drag: rotate\n"
-            "Middle-drag: pan\n"
-            "Wheel: zoom\n"
+            "Left-drag: orbit Iso\n"
+            "Shift+left: pan\n"
+            "Ctrl+left: spin Iso\n"
+            "Middle: pan | Right/wheel: zoom\n"
+            "Ortho: pan/zoom only\n"
+            "Alt: VTK modifier\n"
+            "Drag dividers to resize\n"
             "Ctrl+0: reset views",
             button_panel,
         )
         self.viewport_help_label.setWordWrap(True)
-        self.viewport_help_label.setStyleSheet("font-size: 11px; color: #b8c4d0;")
+        self.viewport_help_label.setStyleSheet(
+            "font-size: 10px; color: #17212b; background-color: #e9eef2; "
+            "border: 1px solid #697783; border-radius: 4px; padding: 6px;"
+        )
         button_layout.addWidget(self.viewport_help_label)
 
         main_layout.addWidget(button_panel)
@@ -2248,6 +2491,18 @@ class MainWindow(QMainWindow):
             self.plotter.subplot(row, column)
             self.plotter.set_background("#000000")
         self._build_tree_scene()
+        self.viewport_rotation_filter = OrthographicRotationFilter(
+            self,
+            self.plotter,
+            self.view_renderers,
+        )
+        self.plotter.installEventFilter(self.viewport_rotation_filter)
+        for viewport_widget in self.plotter.findChildren(QWidget):
+            viewport_widget.installEventFilter(self.viewport_rotation_filter)
+        self.viewport_split_controls = ViewportSplitControls(
+            self.plotter,
+            self.view_renderers,
+        )
         self._set_tree_body_luminosity(self.tree_luminosity_slider.value())
         self._set_tree_body_transparency(self.tree_transparency_slider.value())
         self._set_background_luminosity(self.background_luminosity_slider.value())
@@ -2291,10 +2546,10 @@ class MainWindow(QMainWindow):
 
     def _sync_parallel_projection_action(self):
         if self.central_stack.currentWidget() is self.home_page:
-            cameras = [renderer.GetActiveCamera() for renderer in self.view_renderers.values()]
-            if not cameras:
+            renderer = self.view_renderers.get("Iso")
+            if renderer is None:
                 return
-            parallel = all(camera.GetParallelProjection() for camera in cameras)
+            parallel = renderer.GetActiveCamera().GetParallelProjection()
         else:
             viewport = self._current_3d_viewport()
             if viewport is None:
@@ -2306,11 +2561,13 @@ class MainWindow(QMainWindow):
 
     def _set_parallel_projection(self, parallel):
         if self.central_stack.currentWidget() is self.home_page:
-            for renderer in self.view_renderers.values():
-                camera = renderer.GetActiveCamera()
-                camera.SetParallelProjection(parallel)
-                renderer.ResetCamera()
-                renderer.ResetCameraClippingRange()
+            renderer = self.view_renderers.get("Iso")
+            if renderer is None:
+                return
+            camera = renderer.GetActiveCamera()
+            camera.SetParallelProjection(parallel)
+            renderer.ResetCamera()
+            renderer.ResetCameraClippingRange()
             self.plotter.render()
         else:
             viewport = self._current_3d_viewport()
@@ -2366,9 +2623,15 @@ class MainWindow(QMainWindow):
             for name, (position, up) in cameras.items():
                 renderer = self.view_renderers[name]
                 camera = renderer.GetActiveCamera()
+                parallel = (
+                    True
+                    if name in OrthographicRotationFilter.ORTHOGRAPHIC_VIEW_NAMES
+                    else camera.GetParallelProjection()
+                )
                 camera.SetFocalPoint(center_x, center_y, center_z)
                 camera.SetPosition(*position)
                 camera.SetViewUp(*up)
+                camera.SetParallelProjection(parallel)
                 renderer.ResetCamera()
                 renderer.ResetCameraClippingRange()
             self.plotter.render()
@@ -2393,12 +2656,14 @@ class MainWindow(QMainWindow):
 
     def _set_axes_visible(self, visible):
         if self.central_stack.currentWidget() is self.home_page:
-            for _name, row, column in self.simulation_views:
-                self.plotter.subplot(row, column)
-                if visible:
-                    self.plotter.show_axes()
-                else:
-                    self.plotter.hide_axes()
+            renderer = self.view_renderers.get("Iso")
+            if renderer is None:
+                return
+            self.plotter.subplot(1, 1)
+            if visible:
+                self.plotter.show_axes()
+            else:
+                self.plotter.hide_axes()
             self.plotter.subplot(0, 0)
             return
         viewport = self._current_3d_viewport()

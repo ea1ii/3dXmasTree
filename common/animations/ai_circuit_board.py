@@ -6,31 +6,35 @@ from common.animations.ai_base import SpatialAnimation, _rgb
 class CircuitBoard(SpatialAnimation):
     name = "ai_circuit_board"
     author = "Carlos Gil & AI"
+    version = "0.1.1"
     description = "Branching circuits light from the trunk toward the tree tips."
 
     def _initialise_effect(self, _parameters):
-        ordered = sorted(range(self.led_count), key=lambda index: self.positions[index][2])
-        self.branches = []
-        for branch in range(6):
-            path = []
-            previous_angle = branch * 2 * math.pi / 6
-            for index in ordered:
-                x, y, z = self.positions[index]
-                angle = math.atan2(y, x)
-                expected = previous_angle + z * 2.2
-                difference = abs((angle - expected + math.pi) % (2 * math.pi) - math.pi)
-                if difference < 0.8 and (not path or z > self.positions[path[-1]][2]):
-                    path.append(index)
-                    previous_angle = angle
-            if path:
-                self.branches.append(path)
-        self.speed = self.generator.uniform(0.2, 0.45)
+        branch_count = 8
+        self.branches = [[] for _ in range(branch_count)]
+        for index, (x, y, _z) in enumerate(self.positions):
+            angle = math.atan2(y, x) % (2 * math.pi)
+            branch = round(angle / (2 * math.pi) * branch_count) % branch_count
+            self.branches[branch].append(index)
+        for path in self.branches:
+            path.sort(key=lambda index: self.positions[index][2])
+        self.phases = [self.generator.random() for _ in self.branches]
+        self.speed = self.generator.uniform(0.32, 0.55)
+        self.tail_fraction = 0.34
         self.colors = [_rgb(0.42 + branch * 0.07, 0.85, 1) for branch in range(len(self.branches))]
 
     def _render_frame(self, _delta):
+        intensities = [0.0] * self.led_count
         frame = [(0, 0, 0)] * self.led_count
         for branch_index, path in enumerate(self.branches):
-            lit_count = int((self.elapsed * self.speed + branch_index * 0.21) * len(path))
-            for index in path[:min(len(path), lit_count + 1)]:
-                frame[index] = self.colors[branch_index]
+            if not path:
+                continue
+            progress = (self.elapsed * self.speed + self.phases[branch_index]) % 1.0
+            head = progress * (len(path) - 1)
+            tail_length = max(3.0, len(path) * self.tail_fraction)
+            for offset, index in enumerate(path):
+                intensity = max(0.0, 1.0 - abs(offset - head) / tail_length)
+                if intensity > intensities[index]:
+                    intensities[index] = intensity
+                    frame[index] = tuple(round(channel * intensity) for channel in self.colors[branch_index])
         return frame
