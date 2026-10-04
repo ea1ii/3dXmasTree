@@ -7,7 +7,7 @@ from common.animations import Animation, LEDFrame
 
 class ClassicFadeAnimation(Animation):
     name = "classic_fade"
-    author = "3dXmasTree"
+    author = "Carlos Gil"
     version = "0.1.0"
     description = "Independently fade LEDs with random classic colors or one shared hue."
 

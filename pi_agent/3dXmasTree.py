@@ -225,12 +225,17 @@ def main():
                     f"by {animation_class.author}.",
                     flush=True,
                 )
+                animation_duration = (
+                    args.seconds_per_animation
+                    if args.seconds_per_animation is not None
+                    else getattr(animation_class, "duration_seconds", seconds_per_animation)
+                )
                 started_at = time.monotonic()
                 frames_rendered = run_animation(
                     animation_class,
                     strip,
                     led_count,
-                    seconds_per_animation,
+                    animation_duration,
                     fps,
                     stop_event,
                     {"positions": animation_positions} if animation_positions else None,

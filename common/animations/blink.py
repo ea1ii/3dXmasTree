@@ -6,7 +6,7 @@ from common.animations import Animation, LEDColor, LEDFrame
 
 class BlinkAnimation(Animation):
     name = "blink"
-    author = "3dXmasTree"
+    author = "Carlos Gil"
     version = "0.1.0"
     description = "Blink all LEDs on and off at configurable intervals."
 

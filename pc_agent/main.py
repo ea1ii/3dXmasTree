@@ -2095,9 +2095,18 @@ class MainWindow(QMainWindow):
             "frame_height_mm", self.tree_height_mm + 300
         )
         self.led_positions, self.position_source, self.tree_cone = self._load_simulator_positions()
-        self.led_actors = []
+        self.led_actors_by_view = []
         self.tree_body_actors = []
         self.tree_scene_actors = []
+        self.tree_scene_actors_by_view = []
+        self.view_labels_by_view = []
+        self.simulation_views = (
+            ("Front", 0, 0),
+            ("Right", 0, 1),
+            ("Top", 1, 0),
+            ("Iso", 1, 1),
+        )
+        self.view_renderers = {}
         self.animation_classes = {}
         self.active_animation = None
         self.last_frame_at = None
@@ -2106,7 +2115,7 @@ class MainWindow(QMainWindow):
         self.animation_timer = QTimer(self)
         self.animation_timer.timeout.connect(self._advance_animation_frame)
 
-        self.plotter = QtInteractor(self)
+        self.plotter = QtInteractor(self, shape=(2, 2))
         self.central_stack = QStackedWidget(self)
         self.home_page = QWidget(self.central_stack)
         main_layout = QHBoxLayout(self.home_page)
@@ -2202,7 +2211,9 @@ class MainWindow(QMainWindow):
         self.central_stack.addWidget(self.home_page)
         self.setCentralWidget(self.central_stack)
 
-        self.plotter.set_background("#000000")
+        for _name, row, column in self.simulation_views:
+            self.plotter.subplot(row, column)
+            self.plotter.set_background("#000000")
         self._build_tree_scene()
         self._set_tree_body_luminosity(self.tree_luminosity_slider.value())
         self._set_tree_body_transparency(self.tree_transparency_slider.value())
@@ -2265,23 +2276,37 @@ class MainWindow(QMainWindow):
         return viewports[0] if viewports else None
 
     def _sync_parallel_projection_action(self):
-        viewport = self._current_3d_viewport()
-        if viewport is None:
-            return
-        camera = viewport.renderer.GetActiveCamera()
+        if self.central_stack.currentWidget() is self.home_page:
+            cameras = [renderer.GetActiveCamera() for renderer in self.view_renderers.values()]
+            if not cameras:
+                return
+            parallel = all(camera.GetParallelProjection() for camera in cameras)
+        else:
+            viewport = self._current_3d_viewport()
+            if viewport is None:
+                return
+            parallel = viewport.renderer.GetActiveCamera().GetParallelProjection()
         self.parallel_projection_action.blockSignals(True)
-        self.parallel_projection_action.setChecked(camera.GetParallelProjection())
+        self.parallel_projection_action.setChecked(parallel)
         self.parallel_projection_action.blockSignals(False)
 
     def _set_parallel_projection(self, parallel):
-        viewport = self._current_3d_viewport()
-        if viewport is None:
-            return
-        camera = viewport.renderer.GetActiveCamera()
-        camera.SetParallelProjection(parallel)
-        viewport.reset_camera()
-        viewport.reset_camera_clipping_range()
-        viewport.render()
+        if self.central_stack.currentWidget() is self.home_page:
+            for renderer in self.view_renderers.values():
+                camera = renderer.GetActiveCamera()
+                camera.SetParallelProjection(parallel)
+                renderer.ResetCamera()
+                renderer.ResetCameraClippingRange()
+            self.plotter.render()
+        else:
+            viewport = self._current_3d_viewport()
+            if viewport is None:
+                return
+            camera = viewport.renderer.GetActiveCamera()
+            camera.SetParallelProjection(parallel)
+            viewport.reset_camera()
+            viewport.reset_camera_clipping_range()
+            viewport.render()
 
     def _show_3d_help(self):
         QMessageBox.information(
@@ -2297,12 +2322,45 @@ class MainWindow(QMainWindow):
         )
 
     def _reset_current_3d_view(self):
-        viewport = self._current_3d_viewport()
-        if viewport is not None:
-            self._set_default_3d_view(viewport)
+        if self.central_stack.currentWidget() is self.home_page:
+            self._set_default_3d_view(self.plotter)
+        else:
+            viewport = self._current_3d_viewport()
+            if viewport is not None:
+                self._set_default_3d_view(viewport)
 
-    @staticmethod
-    def _set_default_3d_view(viewport):
+    def _set_default_3d_view(self, viewport):
+        if viewport is self.plotter:
+            bounds = self.plotter.bounds
+            center_x = (bounds[0] + bounds[1]) / 2
+            center_y = (bounds[2] + bounds[3]) / 2
+            center_z = (bounds[4] + bounds[5]) / 2
+            span = max(
+                bounds[1] - bounds[0],
+                bounds[3] - bounds[2],
+                bounds[5] - bounds[4],
+            )
+            distance = max(span * 2.5, 1.0)
+            cameras = {
+                "Front": ((center_x + distance, center_y, center_z), (0, 0, 1)),
+                "Right": ((center_x, center_y + distance, center_z), (0, 0, 1)),
+                "Top": ((center_x, center_y, center_z + distance), (0, 1, 0)),
+                "Iso": (
+                    (center_x + distance, center_y - distance, center_z + distance),
+                    (0, 0, 1),
+                ),
+            }
+            for name, (position, up) in cameras.items():
+                renderer = self.view_renderers[name]
+                camera = renderer.GetActiveCamera()
+                camera.SetFocalPoint(center_x, center_y, center_z)
+                camera.SetPosition(*position)
+                camera.SetViewUp(*up)
+                renderer.ResetCamera()
+                renderer.ResetCameraClippingRange()
+            self.plotter.render()
+            return
+
         bounds = viewport.bounds
         center_x = (bounds[0] + bounds[1]) / 2
         center_y = (bounds[2] + bounds[3]) / 2
@@ -2321,6 +2379,15 @@ class MainWindow(QMainWindow):
             page.set_cable_visible(visible)
 
     def _set_axes_visible(self, visible):
+        if self.central_stack.currentWidget() is self.home_page:
+            for _name, row, column in self.simulation_views:
+                self.plotter.subplot(row, column)
+                if visible:
+                    self.plotter.show_axes()
+                else:
+                    self.plotter.hide_axes()
+            self.plotter.subplot(0, 0)
+            return
         viewport = self._current_3d_viewport()
         if viewport is None:
             return
@@ -2330,6 +2397,27 @@ class MainWindow(QMainWindow):
             viewport.hide_axes()
 
     def _build_tree_scene(self):
+        self.led_actors_by_view.clear()
+        self.tree_scene_actors_by_view.clear()
+        self.view_labels_by_view.clear()
+        for name, row, column in self.simulation_views:
+            self.plotter.subplot(row, column)
+            label_actor = self.plotter.add_text(
+                name,
+                position="upper_left",
+                font_size=10,
+                color="white",
+            )
+            self.current_led_actors = []
+            self.current_tree_scene_actors = []
+            self._build_tree_view()
+            self.led_actors_by_view.append(self.current_led_actors)
+            self.tree_scene_actors_by_view.append(self.current_tree_scene_actors)
+            self.view_labels_by_view.append(label_actor)
+            self.view_renderers[name] = self.plotter.renderer
+        self.plotter.subplot(0, 0)
+
+    def _build_tree_view(self):
         display_scale = 3.5 / 1200.0
         tree_height_mm = (
             self.tree_cone["height_mm"] if self.tree_cone is not None else self.tree_height_mm
@@ -2432,6 +2520,7 @@ class MainWindow(QMainWindow):
     def _add_tree_mesh(self, mesh, **options):
         actor = self.plotter.add_mesh(mesh, **options)
         self.tree_scene_actors.append(actor)
+        self.current_tree_scene_actors.append(actor)
         return actor
 
     def _build_led_scene(self):
@@ -2461,7 +2550,7 @@ class MainWindow(QMainWindow):
                 smooth_shading=True,
             )
             actor.GetProperty().SetAmbient(0.45)
-            self.led_actors.append(actor)
+            self.current_led_actors.append(actor)
 
     def _select_tree_data(self):
         frame_root = PROJECT_ROOT / "pc_agent" / "frames"
@@ -2482,11 +2571,18 @@ class MainWindow(QMainWindow):
             return
 
         self._stop_animation()
-        for actor in self.led_actors:
-            self.plotter.remove_actor(actor, render=False)
-        self.led_actors.clear()
-        for actor in self.tree_scene_actors:
-            self.plotter.remove_actor(actor, render=False)
+        for (_name, row, column), led_actors, tree_actors, label_actor in zip(
+            self.simulation_views,
+            self.led_actors_by_view,
+            self.tree_scene_actors_by_view,
+            self.view_labels_by_view,
+        ):
+            self.plotter.subplot(row, column)
+            for actor in (*led_actors, *tree_actors, label_actor):
+                self.plotter.remove_actor(actor, render=False)
+        self.led_actors_by_view.clear()
+        self.tree_scene_actors_by_view.clear()
+        self.view_labels_by_view.clear()
         self.tree_scene_actors.clear()
         self.tree_body_actors.clear()
         self.led_positions = positions
@@ -2497,6 +2593,7 @@ class MainWindow(QMainWindow):
         self._set_tree_body_luminosity(self.tree_luminosity_slider.value())
         self._set_tree_body_transparency(self.tree_transparency_slider.value())
         self.position_label.setText(f"{self.led_count} LEDs | {self.position_source.name}")
+        self._set_default_3d_view(self.plotter)
         self.plotter.render()
 
     @staticmethod
@@ -2547,7 +2644,10 @@ class MainWindow(QMainWindow):
         self.background_luminosity_label.setText(f"Background luminosity: {value}%")
         channel = round(value * 255 / 100)
         color = f"#{channel:02X}{channel:02X}{channel:02X}"
-        self.plotter.set_background(color)
+        for _name, row, column in self.simulation_views:
+            self.plotter.subplot(row, column)
+            self.plotter.set_background(color)
+        self.plotter.subplot(0, 0)
         self.plotter.render()
 
     def _save_visual_settings(self):
@@ -2625,7 +2725,7 @@ class MainWindow(QMainWindow):
         duration_row = QHBoxLayout()
         duration_row.addWidget(QLabel("Effect duration"))
         self.effect_duration = QDoubleSpinBox(panel)
-        self.effect_duration.setRange(0.1, 3600.0)*
+        self.effect_duration.setRange(0.1, 3600.0)
         self.effect_duration.setDecimals(1)
         self.effect_duration.setSingleStep(0.5)
         self.effect_duration.setSuffix(" s")
@@ -2783,8 +2883,9 @@ class MainWindow(QMainWindow):
             frame = validate_pc_animation_frame(
                 self.active_animation.doframe(delta_seconds), self.led_count
             )
-            for actor, color in zip(self.led_actors, frame):
-                actor.GetProperty().SetColor(*(channel / 255 for channel in color))
+            for actors in self.led_actors_by_view:
+                for actor, color in zip(actors, frame):
+                    actor.GetProperty().SetColor(*(channel / 255 for channel in color))
             self.frame_number += 1
             self.plotter.render()
             return True
@@ -2800,8 +2901,9 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self.active_animation = None
-        for actor in self.led_actors:
-            actor.GetProperty().SetColor(0.06, 0.10, 0.08)
+        for actors in self.led_actors_by_view:
+            for actor in actors:
+                actor.GetProperty().SetColor(0.06, 0.10, 0.08)
         self.plotter.render()
         self.animation_status.setText(f"Animation error: {error}")
         self._update_animation_controls()
@@ -2817,9 +2919,10 @@ class MainWindow(QMainWindow):
         self.active_animation = None
         self.last_frame_at = None
         self.frame_number = 0
-        for actor in self.led_actors:
-            actor.GetProperty().SetColor(0.06, 0.10, 0.08)
-        if self.led_actors:
+        for actors in self.led_actors_by_view:
+            for actor in actors:
+                actor.GetProperty().SetColor(0.06, 0.10, 0.08)
+        if self.led_actors_by_view:
             self.plotter.render()
         if hasattr(self, "animation_status"):
             self.animation_status.setText(f"Stop failed: {stop_error}" if stop_error else "Stopped")

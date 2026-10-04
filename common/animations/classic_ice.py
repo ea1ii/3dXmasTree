@@ -7,7 +7,7 @@ from common.animations import Animation, LEDFrame
 
 class ClassicIceAnimation(Animation):
     name = "classic_ice"
-    author = "3dXmasTree"
+    author = "Carlos Gil"
     version = "0.1.0"
     description = "Slow warm-white glow with unsynchronized cold-white flashes that fade in and out."
 
