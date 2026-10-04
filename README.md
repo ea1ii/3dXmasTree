@@ -83,3 +83,18 @@ For simulated position captures, LED 1 starts at the tree-base center. The remai
 When synthetic lights are enabled, the capture page also shows that same 3D tree as a translucent model, with solid LED markers and links between consecutive LEDs; the currently lit LED is highlighted before its image is captured.
 
 Before using the Pi's physical strip, set its correct host, test limit, pin, brightness, color order, and camera host in `common/settings.json`. Run **Setup LED Length** to measure and store `led.led_count`; `led.test_count` is only the scan limit. Start the Pi with `./pi_agent/run.sh --hardware`. The current code assumes a three-channel NeoPixel-compatible strip.
+
+## Acknowledgements
+
+Credit to [Matt Parker](https://github.com/standupmaths) of [Stand-up Maths](https://www.youtube.com/@standupmaths) for the inspiration.
+
+When I saw his 3D Xmas Tree video in YouTube I told myself 'I need to do that!' Some LED strip has been hunging from my curtain bar ever since doing nothing but gathering dust and cowebs.
+
+Then AI came into play. I was initially reluctant but... was dragged into it like a moth to a flame.
+
+Result? 10,000+ lines of code, from which, in all honesty, not many were written by myself.
+
+If you like the project. Feel free to collaborate.
+
+It's weird to say this with October just started, but Happy Xmas, all!
+
