@@ -2123,7 +2123,7 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(8)
 
         button_panel = QWidget(self.home_page)
-        button_panel.setFixedWidth(180)
+        button_panel.setFixedWidth(200)
         button_layout = QVBoxLayout(button_panel)
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(8)
@@ -2204,6 +2204,39 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(exit_button)
         button_layout.addStretch()
 
+        about_button = QPushButton("About...", button_panel)
+        about_button.clicked.connect(self._show_about)
+        button_layout.addWidget(about_button)
+
+        reset_views_button = QPushButton("Reset Views", button_panel)
+        reset_views_button.clicked.connect(lambda _checked=False: self._reset_current_3d_view())
+        button_layout.addWidget(reset_views_button)
+
+        self.axes_action = QCheckBox("Axes", button_panel)
+        self.axes_action.setChecked(False)
+        self.axes_action.toggled.connect(self._set_axes_visible)
+        button_layout.addWidget(self.axes_action)
+
+        self.parallel_projection_action = QCheckBox("Parallel", button_panel)
+        self.parallel_projection_action.setToolTip(
+            "Toggle between perspective (conical) and parallel projection"
+        )
+        self.parallel_projection_action.setChecked(False)
+        self.parallel_projection_action.toggled.connect(self._set_parallel_projection)
+        button_layout.addWidget(self.parallel_projection_action)
+
+        self.viewport_help_label = QLabel(
+            "3D VIEW CONTROLS\n"
+            "Left-drag: rotate\n"
+            "Middle-drag: pan\n"
+            "Wheel: zoom\n"
+            "Ctrl+0: reset views",
+            button_panel,
+        )
+        self.viewport_help_label.setWordWrap(True)
+        self.viewport_help_label.setStyleSheet("font-size: 11px; color: #b8c4d0;")
+        button_layout.addWidget(self.viewport_help_label)
+
         main_layout.addWidget(button_panel)
         main_layout.addWidget(self.plotter, 1)
         self.animation_panel = self._build_animation_panel()
@@ -2226,12 +2259,11 @@ class MainWindow(QMainWindow):
         toolbar.setFloatable(False)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
-        reset_view = QAction("Reset View", self)
-        reset_view.setShortcut(QKeySequence("Ctrl+0"))
-        reset_view.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
-        reset_view.triggered.connect(lambda checked=False: self._reset_current_3d_view())
-        self.addAction(reset_view)
-        toolbar.addAction(reset_view)
+        reset_views_shortcut = QAction("Reset Views", self)
+        reset_views_shortcut.setShortcut(QKeySequence("Ctrl+0"))
+        reset_views_shortcut.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        reset_views_shortcut.triggered.connect(lambda checked=False: self._reset_current_3d_view())
+        self.addAction(reset_views_shortcut)
 
         close_window = QAction("Close Window", self)
         close_window.setShortcuts(
@@ -2240,24 +2272,6 @@ class MainWindow(QMainWindow):
         close_window.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         close_window.triggered.connect(lambda checked=False: self.close())
         self.addAction(close_window)
-
-        self.axes_action = QAction("Axes", self)
-        self.axes_action.setCheckable(True)
-        self.axes_action.setChecked(False)
-        self.axes_action.toggled.connect(self._set_axes_visible)
-        toolbar.addAction(self.axes_action)
-
-        self.parallel_projection_action = QAction("Parallel", self)
-        self.parallel_projection_action.setCheckable(True)
-        self.parallel_projection_action.setToolTip(
-            "Toggle between perspective (conical) and parallel projection"
-        )
-        self.parallel_projection_action.toggled.connect(self._set_parallel_projection)
-        toolbar.addAction(self.parallel_projection_action)
-
-        help_action = QAction("3D Help", self)
-        help_action.triggered.connect(self._show_3d_help)
-        toolbar.addAction(help_action)
 
         view_menu = self.menuBar().addMenu("View")
         self.cable_action = QAction("Cable", self)
@@ -2308,17 +2322,16 @@ class MainWindow(QMainWindow):
             viewport.reset_camera_clipping_range()
             viewport.render()
 
-    def _show_3d_help(self):
-        QMessageBox.information(
+    def _show_about(self):
+        QMessageBox.about(
             self,
-            "3D View Controls",
-            "Mouse controls for the active 3D viewport:\n\n"
-            "Left-drag: orbit / rotate around the view target\n"
-            "Middle-drag: pan the view\n"
-            "Mouse wheel: zoom in or out\n"
-            "Right-drag vertically: dolly the camera / change distance\n\n"
-            "The Parallel toggle switches between orthographic (parallel) and "
-            "perspective (conical) projection. Ctrl+0 restores the default view.",
+            "About 3dXmasTree",
+            "<h3>3dXmasTree</h3>"
+            "<p>A 3D LED tree calibration, simulation, and animation project.</p>"
+            "<p><b>Created by:</b> Carlos Gil</p>"
+            "<p><b>Repository:</b> <a href='https://github.com/ea1ii/3dXmasTree'>"
+            "github.com/ea1ii/3dXmasTree</a></p>"
+            "<p><b>License:</b> MIT License (see the LICENSE file).</p>",
         )
 
     def _reset_current_3d_view(self):
@@ -2694,9 +2707,9 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        title = QLabel("Animations", panel)
-        title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        layout.addWidget(title)
+        self.animation_title = QLabel("Animations (0)", panel)
+        self.animation_title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(self.animation_title)
 
         refresh_button = QPushButton("Refresh List", panel)
         refresh_button.clicked.connect(lambda _checked=False: self.refresh_animation_list())
@@ -2742,14 +2755,14 @@ class MainWindow(QMainWindow):
         controls = QHBoxLayout()
         self.play_button = QPushButton("Play", panel)
         self.stop_button = QPushButton("Stop", panel)
-        self.frame_button = QPushButton("Frame", panel)
-        self.frame_button.setToolTip("Advance the selected animation by one frame")
+        self.pause_button = QPushButton("Pause", panel)
+        self.pause_button.setToolTip("Pause or resume the current animation")
         self.play_button.clicked.connect(lambda _checked=False: self._play_animation())
         self.stop_button.clicked.connect(lambda _checked=False: self._stop_animation())
-        self.frame_button.clicked.connect(lambda _checked=False: self._step_animation_frame())
+        self.pause_button.clicked.connect(lambda _checked=False: self._toggle_animation_pause())
         controls.addWidget(self.play_button)
         controls.addWidget(self.stop_button)
-        controls.addWidget(self.frame_button)
+        controls.addWidget(self.pause_button)
         layout.addLayout(controls)
 
         self.animation_status = QLabel("Ready", panel)
@@ -2770,6 +2783,7 @@ class MainWindow(QMainWindow):
         self._stop_animation()
         selected_name = self.animation_list.currentItem().data(Qt.ItemDataRole.UserRole) if self.animation_list.currentItem() else None
         animations, failures = discover_pc_animations()
+        self.animation_title.setText(f"Animations ({len(animations)})")
         self.animation_classes = {animation.name: animation for animation in animations}
         self.animation_list.blockSignals(True)
         self.animation_list.clear()
@@ -2809,9 +2823,11 @@ class MainWindow(QMainWindow):
     def _update_animation_controls(self):
         selected = self.animation_list.currentItem() is not None
         playing = self.animation_timer.isActive()
-        self.play_button.setEnabled(selected and not playing)
-        self.stop_button.setEnabled(playing or self.active_animation is not None)
-        self.frame_button.setEnabled(selected and not playing)
+        active = self.active_animation is not None
+        self.play_button.setEnabled(selected and not active)
+        self.stop_button.setEnabled(active)
+        self.pause_button.setEnabled(active)
+        self.pause_button.setText("Pause" if playing else "Resume")
 
     def _set_animation_rate(self, fps):
         self.animation_fps = float(fps)
@@ -2860,15 +2876,17 @@ class MainWindow(QMainWindow):
             self._animation_failed(error)
         self._update_animation_controls()
 
-    def _step_animation_frame(self):
-        try:
-            if self.active_animation is None and not self._initialise_selected_animation():
-                return
+    def _toggle_animation_pause(self):
+        if self.active_animation is None:
+            return
+        if self.animation_timer.isActive():
+            self.animation_timer.stop()
             self.last_frame_at = None
-            if self._render_animation_step(1.0 / self.animation_fps):
-                self.animation_status.setText(f"Frame {self.frame_number}")
-        except Exception as error:
-            self._animation_failed(error)
+            self.animation_status.setText("Paused")
+        else:
+            self.last_frame_at = time.monotonic()
+            self.animation_timer.start(max(1, round(1000 / self.animation_fps)))
+            self.animation_status.setText("Playing")
         self._update_animation_controls()
 
     def _advance_animation_frame(self):
