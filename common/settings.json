@@ -31,13 +31,14 @@
   "simulation": {
     "tree_luminosity_percent": 100,
     "tree_transparency_percent": 90,
-    "background_luminosity_percent": 29
+    "background_luminosity_percent": 29,
+    "positions_file": ""
   },
   "night_schedule": {
     "latitude": 50.9283333333,
     "longitude": -1.3513888889,
-    "sunrise_offset_minutes": -60,
-    "sunset_offset_minutes": 30,
+    "sunrise_offset_minutes": 30,
+    "sunset_offset_minutes": -60,
     "opening_animation": "zarathustra_intro",
     "closing_animation": ""
   }

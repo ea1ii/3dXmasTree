@@ -72,13 +72,25 @@ def validate_frame(frame, led_count):
     return validated
 
 
-def load_animation_positions(led_count):
+def load_animation_positions(led_count, settings=None):
     frame_root = PROJECT_ROOT / "pc_agent" / "frames"
-    position_files = sorted(
+    preferred_file = (settings or {}).get("simulation", {}).get("positions_file", "")
+    position_files = []
+    preferred_path = None
+    if isinstance(preferred_file, str) and preferred_file.strip():
+        preferred_path = (PROJECT_ROOT / preferred_file).resolve()
+        try:
+            preferred_path.relative_to(PROJECT_ROOT.resolve())
+        except ValueError:
+            preferred_path = None
+        if preferred_path is not None and preferred_path.is_file():
+            position_files.append(preferred_path)
+    fallback_files = sorted(
         frame_root.glob("*/positions_*.json"),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
+    position_files.extend(path for path in fallback_files if path not in position_files)
     for path in position_files:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -452,7 +464,7 @@ def main():
             parser.error("Calibrate and save led.led_count before using --hardware")
     else:
         led_count = led_count or led_settings.get("capture_test_led_count", 100)
-    animation_positions = load_animation_positions(led_count)
+    animation_positions = load_animation_positions(led_count, settings)
     pixel_order = led_settings.get("pixel_order") or "GRB"
 
     if args.hardware:

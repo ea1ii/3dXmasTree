@@ -6,8 +6,8 @@ from common.animations.ai_base import SpatialAnimation, _distance, _rgb
 class Boiling(SpatialAnimation):
     name = "ai_boiling"
     author = "Carlos Gil & AI"
-    version = "0.1.4"
-    description = "Heat diffuses upward as buoyant bubbles grow, rise, and pop."
+    version = "0.1.5"
+    description = "Heat bubbles rise along the tree's LED branches and burst at the crown."
 
     def _initialise_effect(self, _parameters):
         self.neighbors = []
@@ -17,7 +17,17 @@ class Boiling(SpatialAnimation):
                 key=lambda candidate: _distance(point, self.positions[candidate]),
             )[:5]
             self.neighbors.append(nearest)
+        self.upward_neighbors = []
+        for index, point in enumerate(self.positions):
+            higher = [
+                candidate
+                for candidate, candidate_point in enumerate(self.positions)
+                if candidate_point[2] > point[2] + 1e-6
+            ]
+            higher.sort(key=lambda candidate: _distance(point, self.positions[candidate]))
+            self.upward_neighbors.append(higher[:6])
         self.temperature = [0.0] * self.led_count
+        self.pop_brightness = [0.0] * self.led_count
         self.bubbles = []
         self.substep = 1 / 60
         self.cooling = 0.28
@@ -40,20 +50,39 @@ class Boiling(SpatialAnimation):
 
     def _spawn_bubble(self):
         bottom = [index for index, point in enumerate(self.positions) if point[2] < self.height * 0.18]
-        if bottom:
-            index = self.generator.choice(bottom)
-            origin = self.positions[index]
-            rise_duration = self.generator.uniform(1.0, 2.2)
-            rise_distance = max(0.0, self.height - origin[2])
-            self.bubbles.append({
-                "index": index,
-                "origin": origin,
-                "age": 0.0,
-                "rise_duration": rise_duration,
-                "rise_speed": rise_distance / rise_duration,
-                "radius": self.generator.uniform(0.045, 0.09),
-            })
+        if not bottom:
+            return
+        index = self.generator.choice(bottom)
+        self.bubbles.append({
+            "index": index,
+            "age": 0.0,
+            "move_remaining": 0.0,
+            "move_interval": self.generator.uniform(0.08, 0.18),
+            "radius": self.generator.uniform(0.8, 1.4) * max(self._estimate_spacing(), 0.025),
+        })
+        self.temperature[index] = 1.0
+
+    def _estimate_spacing(self):
+        distances = [
+            _distance(first, second)
+            for first, second in zip(self.positions, self.positions[1:])
+            if _distance(first, second) > 0
+        ]
+        return sum(distances) / len(distances) if distances else self.height / 10
+
+    def _pop_at_crown(self, source_index):
+        origin = self.positions[source_index]
+        top_index = min(
+            self.top_indices,
+            key=lambda index: (
+                (self.positions[index][0] - origin[0]) ** 2
+                + (self.positions[index][1] - origin[1]) ** 2
+            ),
+        )
+        burst_indices = {top_index, *self.neighbors[top_index]}
+        for index in burst_indices:
             self.temperature[index] = 1.0
+            self.pop_brightness[index] = 1.0
 
     def _render_frame(self, delta):
         remaining = delta
@@ -76,32 +105,32 @@ class Boiling(SpatialAnimation):
         active_bubbles = []
         for bubble in self.bubbles:
             bubble["age"] += delta
-            if bubble["age"] >= bubble["rise_duration"]:
-                top_index = min(
-                    self.top_indices,
-                    key=lambda index: (
-                        (self.positions[index][0] - bubble["origin"][0]) ** 2
-                        + (self.positions[index][1] - bubble["origin"][1]) ** 2
-                    ),
-                )
-                self.temperature[top_index] = 1.0
+            bubble["move_remaining"] -= delta
+            while bubble["move_remaining"] <= 0:
+                current_index = bubble["index"]
+                if self.positions[current_index][2] >= self.height * 0.94:
+                    self._pop_at_crown(current_index)
+                    break
+                candidates = self.upward_neighbors[current_index]
+                if not candidates:
+                    self._pop_at_crown(current_index)
+                    break
+                bubble["index"] = self.generator.choice(candidates)
+                self.temperature[bubble["index"]] = 1.0
+                bubble["move_remaining"] += bubble["move_interval"]
             else:
                 active_bubbles.append(bubble)
         self.bubbles = active_bubbles
+        self.pop_brightness = [max(0.0, value - delta * 2.2) for value in self.pop_brightness]
         frame = []
         for index, point in enumerate(self.positions):
             heat = self.temperature[index]
             color = _rgb(0.02 + 0.09 * heat, 0.95, 0.15 + 0.85 * heat)
-            brightness = min(1.0, heat * 1.5)
+            brightness = max(min(1.0, heat * 1.5), self.pop_brightness[index])
             for bubble in self.bubbles:
-                progress = min(1.0, bubble["age"] / bubble["rise_duration"])
-                origin = bubble["origin"]
-                center = (
-                    origin[0],
-                    origin[1],
-                    min(self.height, origin[2] + bubble["rise_speed"] * bubble["age"]),
-                )
-                radius = bubble["radius"] * (1 + 1.7 * progress)
+                center = self.positions[bubble["index"]]
+                grow = min(1.0, bubble["age"] * 0.6)
+                radius = bubble["radius"] * (1 + 0.7 * grow)
                 glow = max(0.0, 1 - _distance(point, center) / radius)
                 brightness = max(brightness, glow)
             frame.append(tuple(round(channel * brightness) for channel in color))

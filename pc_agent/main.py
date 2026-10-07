@@ -2954,6 +2954,23 @@ class MainWindow(QMainWindow):
         self.position_source = Path(file_path)
         self.tree_cone = tree_cone
         self.led_count = len(positions)
+        resolved_path = self.position_source.resolve()
+        try:
+            relative_path = resolved_path.relative_to(PROJECT_ROOT.resolve()).as_posix()
+        except ValueError:
+            relative_path = ""
+        try:
+            settings = load_settings()
+            settings.setdefault("simulation", {})["positions_file"] = relative_path
+            save_settings(settings)
+            self.settings = settings
+            self.simulation_settings = settings.get("simulation", {})
+        except (OSError, ValueError, TypeError) as error:
+            QMessageBox.warning(
+                self,
+                "Select Tree Data",
+                f"Tree data loaded for this session, but could not be saved for next time: {error}",
+            )
         self._build_tree_scene()
         self._set_tree_body_luminosity(self.tree_luminosity_slider.value())
         self._set_tree_body_transparency(self.tree_transparency_slider.value())
@@ -3028,17 +3045,31 @@ class MainWindow(QMainWindow):
 
     def _load_simulator_positions(self):
         frame_root = PROJECT_ROOT / "pc_agent" / "frames"
-        position_files = sorted(
+        preferred_file = self.simulation_settings.get("positions_file", "")
+        position_files = []
+        candidate = None
+        if isinstance(preferred_file, str) and preferred_file.strip():
+            candidate = (PROJECT_ROOT / preferred_file).resolve()
+            try:
+                candidate.relative_to(PROJECT_ROOT.resolve())
+            except ValueError:
+                candidate = None
+            if candidate is not None and candidate.is_file():
+                position_files.append(candidate)
+        fallback_files = sorted(
             frame_root.glob("*/positions_*.json"),
             key=lambda path: path.stat().st_mtime,
             reverse=True,
         )
+        position_files.extend(path for path in fallback_files if path not in position_files)
         for path in position_files:
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
                 positions, tree_cone = self._parse_tree_data(payload)
-                if len(positions) != self.led_count:
+                if path != candidate and len(positions) != self.led_count:
                     continue
+                if candidate is not None and path == candidate:
+                    self.led_count = len(positions)
                 return positions, path, tree_cone
             except (OSError, ValueError, TypeError, KeyError):
                 continue
