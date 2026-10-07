@@ -21,6 +21,7 @@ sys.path.insert(0, str(PI_AGENT_DIR))
 
 from common.Xmas_shared import require_platform, start_exit_key_monitor
 from common.animations import Animation
+from common.agent_client import save_settings
 from led_controller import NeoPixelStrip, SimulatedStrip
 
 
@@ -110,6 +111,51 @@ def load_animation_positions(led_count, settings=None):
         except (OSError, ValueError, TypeError, KeyError):
             continue
     return None
+
+
+def choose_positions_file(settings):
+    frame_root = PROJECT_ROOT / "pc_agent" / "frames"
+    position_files = sorted(
+        frame_root.glob("*/positions_*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not position_files:
+        print(f"No positions files found under {frame_root}.", file=sys.stderr)
+        return False
+
+    current_file = settings.get("simulation", {}).get("positions_file", "")
+    print("Available positions files:")
+    for index, path in enumerate(position_files, start=1):
+        marker = " (current)" if path.relative_to(PROJECT_ROOT).as_posix() == current_file else ""
+        print(f"  {index}. {path.relative_to(PROJECT_ROOT).as_posix()}{marker}")
+
+    while True:
+        try:
+            choice = input("Choose a file number, or q to cancel: ").strip()
+        except EOFError:
+            choice = "q"
+        if choice.lower() == "q":
+            return True
+        try:
+            selected_index = int(choice) - 1
+        except ValueError:
+            selected_index = -1
+        if 0 <= selected_index < len(position_files):
+            break
+        print(f"Enter a number from 1 to {len(position_files)}, or q to cancel.")
+
+    selected_file = position_files[selected_index]
+    settings.setdefault("simulation", {})["positions_file"] = (
+        selected_file.relative_to(PROJECT_ROOT).as_posix()
+    )
+    try:
+        save_settings(settings)
+    except OSError as error:
+        print(f"Could not save settings: {error}", file=sys.stderr)
+        return False
+    print(f"Saved positions file: {settings['simulation']['positions_file']}")
+    return True
 
 
 def run_animation(
@@ -373,6 +419,11 @@ def main():
     parser.add_argument("--fps", type=float, default=None)
     parser.add_argument("--seconds-per-animation", type=float, default=None)
     parser.add_argument(
+        "--choose-positions",
+        action="store_true",
+        help="Choose and save the positions file used by animations.",
+    )
+    parser.add_argument(
         "--night-schedule",
         "--schedule",
         action="store_true",
@@ -390,6 +441,9 @@ def main():
     settings_path = PROJECT_ROOT / "common" / "settings.json"
     with settings_path.open("r", encoding="utf-8") as settings_file:
         settings = json.load(settings_file)
+
+    if args.choose_positions:
+        return 0 if choose_positions_file(settings) else 1
 
     animation_settings = settings.get("animation", {})
     fps = args.fps if args.fps is not None else animation_settings.get("fps", 30.0)
