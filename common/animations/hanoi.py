@@ -1,7 +1,7 @@
 import colorsys
 import math
 import random
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
 from common.animations import Animation, LEDFrame
 
@@ -45,34 +45,6 @@ class HanoiAnimation(Animation):
         self.settled_colors = []
         self.running = True
         self._begin_next_slice()
-
-    @staticmethod
-    def _read_positions(raw_positions, led_count):
-        if isinstance(raw_positions, Sequence) and len(raw_positions) == led_count:
-            try:
-                positions = [
-                    tuple(float(coordinate) for coordinate in position)
-                    for position in raw_positions
-                ]
-                if all(
-                    len(position) == 3
-                    and all(math.isfinite(value) for value in position)
-                    for position in positions
-                ):
-                    return positions
-            except (TypeError, ValueError):
-                pass
-        return HanoiAnimation._fallback_positions(led_count)
-
-    @staticmethod
-    def _fallback_positions(led_count):
-        positions = []
-        for index in range(led_count):
-            height = index / max(1, led_count - 1)
-            angle = index * 2.399963229728653
-            radius = 0.42 * (1.0 - height)
-            positions.append((radius * math.cos(angle), radius * math.sin(angle), height))
-        return positions
 
     def _random_color(self):
         hue = self.generator.random()
@@ -202,5 +174,3 @@ class HanoiAnimation(Animation):
             frame.append(color)
         return frame
 
-    def stop(self) -> None:
-        self.running = False

@@ -1,5 +1,5 @@
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
 from common.animations import Animation, LEDFrame
 
@@ -38,33 +38,6 @@ class ZarathustraIntroAnimation(Animation):
             self.maximum_z = self.minimum_z + self.height
         self.elapsed_seconds = 0.0
         self.running = True
-
-    @staticmethod
-    def _read_positions(raw_positions, led_count):
-        if isinstance(raw_positions, Sequence) and len(raw_positions) == led_count:
-            try:
-                positions = [
-                    tuple(float(coordinate) for coordinate in position)
-                    for position in raw_positions
-                ]
-                if all(
-                    len(position) == 3
-                    and all(math.isfinite(value) for value in position)
-                    for position in positions
-                ):
-                    return positions
-            except (TypeError, ValueError):
-                pass
-        return [
-            (
-                0.42 * (1 - index / max(1, led_count - 1))
-                * math.cos(index * 2.399963229728653),
-                0.42 * (1 - index / max(1, led_count - 1))
-                * math.sin(index * 2.399963229728653),
-                index / max(1, led_count - 1),
-            )
-            for index in range(led_count)
-        ]
 
     @staticmethod
     def _smoothstep(value):
@@ -168,5 +141,3 @@ class ZarathustraIntroAnimation(Animation):
             )
         return frame
 
-    def stop(self) -> None:
-        self.running = False

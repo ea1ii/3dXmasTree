@@ -1,10 +1,8 @@
 import colorsys
 import json
 import math
-import os
 import random
-import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 
 from common.animations import Animation, LEDFrame
@@ -103,92 +101,6 @@ class HorizontalSliceAnimation(Animation):
         }
         cls._persist_effect_parameters(effective_parameters)
         return effective_parameters
-
-    @staticmethod
-    def _read_range(raw_value, name, lower_bound, upper_bound, minimum_exclusive=False):
-        if (
-            not isinstance(raw_value, Sequence)
-            or isinstance(raw_value, (str, bytes))
-            or len(raw_value) != 2
-        ):
-            raise ValueError(f"{name} must contain two numbers")
-        values = tuple(float(value) for value in raw_value)
-        minimum, maximum = values
-        minimum_valid = minimum > lower_bound if minimum_exclusive else minimum >= lower_bound
-        if (
-            not all(math.isfinite(value) for value in values)
-            or not minimum_valid
-            or maximum > upper_bound
-            or minimum > maximum
-        ):
-            raise ValueError(f"{name} values are outside the allowed range")
-        return values
-
-    @staticmethod
-    def _read_unit_interval(raw_value, name):
-        if isinstance(raw_value, bool):
-            raise ValueError(f"{name} must be between 0 and 1")
-        value = float(raw_value)
-        if not math.isfinite(value) or not 0 <= value <= 1:
-            raise ValueError(f"{name} must be between 0 and 1")
-        return value
-
-    @classmethod
-    def _persist_effect_parameters(cls, parameters):
-        sidecar_path = cls.PARAMETER_SIDECAR
-        json_parameters = json.loads(json.dumps(parameters))
-        try:
-            current_parameters = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
-            current_parameters = None
-        if current_parameters == json_parameters:
-            return
-
-        temporary_path = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                dir=sidecar_path.parent,
-                suffix=".tmp",
-                delete=False,
-            ) as temporary_file:
-                temporary_path = Path(temporary_file.name)
-                json.dump(parameters, temporary_file, indent=2)
-                temporary_file.write("\n")
-            os.replace(temporary_path, sidecar_path)
-        finally:
-            if temporary_path is not None:
-                temporary_path.unlink(missing_ok=True)
-
-    @staticmethod
-    def _read_positions(raw_positions, led_count):
-        if isinstance(raw_positions, Sequence) and len(raw_positions) == led_count:
-            try:
-                positions = [
-                    tuple(float(coordinate) for coordinate in position)
-                    for position in raw_positions
-                ]
-                if all(
-                    len(position) == 3
-                    and all(math.isfinite(value) for value in position)
-                    for position in positions
-                ):
-                    return positions
-            except (TypeError, ValueError):
-                pass
-        return HorizontalSliceAnimation._fallback_positions(led_count)
-
-    @staticmethod
-    def _fallback_positions(led_count):
-        positions = []
-        for index in range(led_count):
-            height = index / max(1, led_count - 1)
-            angle = index * 2.399963229728653
-            radius = 0.42 * (1.0 - height)
-            positions.append((radius * math.cos(angle), radius * math.sin(angle), height))
-        return positions
-
     def _contrasting_hue(self, reference_hue):
         separation = self.generator.uniform(*self.hue_separation_range)
         direction = self.generator.choice((-1.0, 1.0))
@@ -239,5 +151,3 @@ class HorizontalSliceAnimation(Animation):
             for _x, _y, z in self.positions
         ]
 
-    def stop(self) -> None:
-        self.running = False

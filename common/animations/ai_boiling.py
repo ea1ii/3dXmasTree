@@ -58,17 +58,9 @@ class Boiling(SpatialAnimation):
             "age": 0.0,
             "move_remaining": 0.0,
             "move_interval": self.generator.uniform(0.08, 0.18),
-            "radius": self.generator.uniform(0.8, 1.4) * max(self._estimate_spacing(), 0.025),
+            "radius": self.generator.uniform(0.8, 1.4) * max(self._estimate_led_spacing(), 0.025),
         })
         self.temperature[index] = 1.0
-
-    def _estimate_spacing(self):
-        distances = [
-            _distance(first, second)
-            for first, second in zip(self.positions, self.positions[1:])
-            if _distance(first, second) > 0
-        ]
-        return sum(distances) / len(distances) if distances else self.height / 10
 
     def _pop_at_crown(self, source_index):
         origin = self.positions[source_index]

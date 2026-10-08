@@ -51,15 +51,7 @@ class ConvectionCells(SpatialAnimation):
         self.top_indices = [index for index, point in enumerate(self.positions) if point[2] >= self.height * 0.94]
         if not self.top_indices:
             self.top_indices = [max(range(self.led_count), key=lambda index: self.positions[index][2])]
-        self.led_spacing = self._estimate_spacing()
-
-    def _estimate_spacing(self):
-        distances = [
-            _distance(first, second)
-            for first, second in zip(self.positions, self.positions[1:])
-            if _distance(first, second) > 0
-        ]
-        return sum(distances) / len(distances) if distances else self.height / 10
+        self.led_spacing = self._estimate_led_spacing()
 
     def _spawn_bubble(self):
         bottom_indices = [index for index, point in enumerate(self.positions) if point[2] < self.height * 0.2]

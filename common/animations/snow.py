@@ -1,6 +1,6 @@
 import math
 import random
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
 from common.animations import Animation, LEDFrame
 
@@ -42,46 +42,6 @@ class SnowAnimation(Animation):
         )
         self.blobs = [self._new_blob(initial=True) for _ in range(self.blob_count)]
         self.running = True
-
-    @staticmethod
-    def _read_positions(raw_positions, led_count):
-        if isinstance(raw_positions, Sequence) and len(raw_positions) == led_count:
-            try:
-                positions = [
-                    tuple(float(coordinate) for coordinate in position)
-                    for position in raw_positions
-                ]
-                if all(
-                    len(position) == 3
-                    and all(math.isfinite(value) for value in position)
-                    for position in positions
-                ):
-                    return positions
-            except (TypeError, ValueError):
-                pass
-        return SnowAnimation._fallback_positions(led_count)
-
-    @staticmethod
-    def _fallback_positions(led_count):
-        positions = []
-        for index in range(led_count):
-            height = index / max(1, led_count - 1)
-            angle = index * 2.399963229728653
-            radius = 0.42 * (1.0 - height)
-            positions.append((radius * math.cos(angle), radius * math.sin(angle), height))
-        return positions
-
-    def _estimate_led_spacing(self):
-        if len(self.positions) < 2:
-            return self.height / 10
-        distances = [
-            math.sqrt(sum((first[axis] - second[axis]) ** 2 for axis in range(3)))
-            for first, second in zip(self.positions, self.positions[1:])
-        ]
-        positive_distances = [distance for distance in distances if distance > 0]
-        if not positive_distances:
-            return self.height / 10
-        return sum(positive_distances) / len(positive_distances)
 
     def _new_blob(self, initial=False):
         anchor = self.generator.choice(self.positions)
@@ -140,5 +100,5 @@ class SnowAnimation(Animation):
         ]
 
     def stop(self) -> None:
-        self.running = False
+        super().stop()
         self.blobs.clear()

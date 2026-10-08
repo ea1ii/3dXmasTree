@@ -2,11 +2,13 @@ import colorsys
 import math
 import random
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
 from common.animations import Animation, LEDFrame
 
+# Helper functions for color manipulation, mixing, smoothing, and distance calculation.
 
+# Convert HSV color to RGB color.
 def _rgb(hue, saturation=0.9, value=1.0):
     return tuple(
         round(channel * 255)
@@ -14,15 +16,18 @@ def _rgb(hue, saturation=0.9, value=1.0):
     )
 
 
+# Mix two RGB colors by a given amount.
 def _mix(first, second, amount):
     return tuple(round(a + (b - a) * amount) for a, b in zip(first, second))
 
 
+# Smooth a value to ease in and out.
 def _smooth(value):
     value = min(1.0, max(0.0, value))
     return value * value * (3 - 2 * value)
 
 
+# Calculate the Euclidean distance between two RGB colors.
 def _distance(first, second):
     return math.sqrt(sum((a - b) ** 2 for a, b in zip(first, second)))
 
@@ -43,23 +48,7 @@ class SpatialAnimation(Animation, ABC):
             raise ValueError("led_count must be positive")
         self.led_count = led_count
         self.generator = random.Random()
-        raw_positions = parameters.get("positions")
-        if isinstance(raw_positions, Sequence) and len(raw_positions) == led_count:
-            try:
-                positions = [
-                    tuple(float(value) for value in position)
-                    for position in raw_positions
-                ]
-                if not all(
-                    len(position) == 3
-                    and all(math.isfinite(value) for value in position)
-                    for position in positions
-                ):
-                    positions = self._fallback_positions(led_count)
-            except (TypeError, ValueError):
-                positions = self._fallback_positions(led_count)
-        else:
-            positions = self._fallback_positions(led_count)
+        positions = self._read_positions(parameters.get("positions"), led_count)
 
         minimum_z = min(position[2] for position in positions)
         maximum_z = max(position[2] for position in positions)
@@ -76,15 +65,6 @@ class SpatialAnimation(Animation, ABC):
         self.running = True
         self._initialise_effect(parameters)
 
-    def _fallback_positions(self, led_count):
-        points = []
-        for index in range(led_count):
-            height = index / max(1, led_count - 1)
-            angle = index * 2.399963229728653
-            radius = 0.42 * (1 - height)
-            points.append((radius * math.cos(angle), radius * math.sin(angle), height))
-        return points
-
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count
@@ -96,5 +76,3 @@ class SpatialAnimation(Animation, ABC):
             raise ValueError(f"Animation returned {len(frame)} LEDs; expected {self.led_count}")
         return frame
 
-    def stop(self) -> None:
-        self.running = False

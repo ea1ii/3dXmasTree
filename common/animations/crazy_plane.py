@@ -1,7 +1,7 @@
 import colorsys
 import math
 import random
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
 from common.animations import Animation, LEDFrame
 
@@ -58,34 +58,6 @@ class CrazyPlaneAnimation(Animation):
         self.angular_speeds = [self._random_angular_speed() for _ in range(3)]
         self.rotation_change_remaining = self.generator.uniform(*self.ROTATION_CHANGE_RANGE)
         self.running = True
-
-    @staticmethod
-    def _read_positions(raw_positions, led_count):
-        if isinstance(raw_positions, Sequence) and len(raw_positions) == led_count:
-            try:
-                positions = [
-                    tuple(float(coordinate) for coordinate in position)
-                    for position in raw_positions
-                ]
-                if all(
-                    len(position) == 3
-                    and all(math.isfinite(value) for value in position)
-                    for position in positions
-                ):
-                    return positions
-            except (TypeError, ValueError):
-                pass
-        return CrazyPlaneAnimation._fallback_positions(led_count)
-
-    @staticmethod
-    def _fallback_positions(led_count):
-        positions = []
-        for index in range(led_count):
-            height = index / max(1, led_count - 1)
-            angle = index * 2.399963229728653
-            radius = 0.42 * (1.0 - height)
-            positions.append((radius * math.cos(angle), radius * math.sin(angle), height))
-        return positions
 
     @staticmethod
     def _color_from_hue(hue):
@@ -180,5 +152,3 @@ class CrazyPlaneAnimation(Animation):
             frame.append(self.negative_color if signed_distance < 0 else self.positive_color)
         return frame
 
-    def stop(self) -> None:
-        self.running = False

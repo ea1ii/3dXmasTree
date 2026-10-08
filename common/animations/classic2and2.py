@@ -108,5 +108,3 @@ class Classic2And2Animation(Animation):
             for group in self.groups
         ]
 
-    def stop(self) -> None:
-        self.running = False

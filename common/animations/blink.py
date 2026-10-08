@@ -51,5 +51,5 @@ class BlinkAnimation(Animation):
         return [color] * self.led_count
 
     def stop(self) -> None:
-        self.running = False
+        super().stop()
         self.elapsed_seconds = 0.0

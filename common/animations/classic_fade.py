@@ -63,5 +63,5 @@ class ClassicFadeAnimation(Animation):
         return frame
 
     def stop(self) -> None:
-        self.running = False
+        super().stop()
         self.elapsed_seconds = [0.0] * self.led_count

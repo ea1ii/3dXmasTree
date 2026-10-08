@@ -1,6 +1,8 @@
+import json
 import math
 import random
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
+from pathlib import Path
 
 from common.animations import Animation, LEDFrame
 
@@ -14,6 +16,10 @@ class GaliciaAnimation(Animation):
     COLD_WHITE = (210, 240, 255)
     CYAN = (0, 255, 255)
     SWEEP_DURATION_RANGE = (1.5, 4.0)
+    PARAMETER_DEFAULTS = {
+        "sweep_duration_range": SWEEP_DURATION_RANGE
+    }
+    PARAMETER_SIDECAR = Path(__file__).with_suffix(".json")
 
     def initialise(
         self,
@@ -23,6 +29,8 @@ class GaliciaAnimation(Animation):
         if led_count < 1:
             raise ValueError("led_count must be positive")
 
+        effect_parameters = self._load_effect_parameters(parameters)
+        self.sweep_duration_range = effect_parameters["sweep_duration_range"]
         self.led_count = led_count
         self.generator = random.Random()
         self.positions = self._read_positions(parameters.get("positions"), led_count)
@@ -41,29 +49,35 @@ class GaliciaAnimation(Animation):
         self._start_sweep()
         self.running = True
 
-    @staticmethod
-    def _read_positions(raw_positions, led_count):
-        if isinstance(raw_positions, Sequence) and len(raw_positions) == led_count:
-            try:
-                positions = [
-                    tuple(float(coordinate) for coordinate in position)
-                    for position in raw_positions
-                ]
-                if all(
-                    len(position) == 3
-                    and all(math.isfinite(value) for value in position)
-                    for position in positions
-                ):
-                    return positions
-            except (TypeError, ValueError):
-                pass
-        positions = []
-        for index in range(led_count):
-            height = index / max(1, led_count - 1)
-            angle = index * 2.399963229728653
-            radius = 0.42 * (1.0 - height)
-            positions.append((radius * math.cos(angle), radius * math.sin(angle), height))
-        return positions
+    @classmethod
+    def _load_effect_parameters(cls, parameters):
+        if not isinstance(parameters, Mapping):
+            raise ValueError("parameters must be a mapping")
+        try:
+            sidecar_parameters = json.loads(
+                cls.PARAMETER_SIDECAR.read_text(encoding="utf-8")
+            )
+        except FileNotFoundError:
+            sidecar_parameters = {}
+        except json.JSONDecodeError as error:
+            raise ValueError(f"Invalid galicia parameter sidecar: {error}") from error
+        if not isinstance(sidecar_parameters, dict):
+            raise ValueError("galicia parameter sidecar must contain a JSON object")
+
+        overrides = parameters.get("galicia", {})
+        if not isinstance(overrides, Mapping):
+            raise ValueError("parameters['galicia'] must be a mapping")
+        configured = {**cls.PARAMETER_DEFAULTS, **sidecar_parameters, **overrides}
+        sweep_duration_range = cls._read_range(
+            configured["sweep_duration_range"],
+            "sweep_duration_range",
+            0.0,
+            math.inf,
+            minimum_exclusive=True,
+        )
+        effective_parameters = {"sweep_duration_range": sweep_duration_range}
+        cls._persist_effect_parameters(effective_parameters)
+        return effective_parameters
 
     def _random_direction(self):
         vertical = self.generator.uniform(-1.0, 1.0)
@@ -88,7 +102,7 @@ class GaliciaAnimation(Animation):
             self.stripe_width,
         )
         self.sweep_direction = self.generator.choice((-1.0, 1.0))
-        self.sweep_duration = self.generator.uniform(*self.SWEEP_DURATION_RANGE)
+        self.sweep_duration = self.generator.uniform(*self.sweep_duration_range)
         self.sweep_elapsed = 0.0
 
     def doframe(self, delta_seconds: float) -> LEDFrame:
@@ -114,5 +128,3 @@ class GaliciaAnimation(Animation):
             for projection in self.projections
         ]
 
-    def stop(self) -> None:
-        self.running = False

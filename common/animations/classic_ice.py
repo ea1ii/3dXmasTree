@@ -89,6 +89,6 @@ class ClassicIceAnimation(Animation):
         return frame
 
     def stop(self) -> None:
-        self.running = False
+        super().stop()
         self.flash_duration = [0.0] * self.led_count
         self.flash_remaining = [0.0] * self.led_count

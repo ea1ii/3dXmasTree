@@ -7,6 +7,7 @@ import math
 import os
 import pkgutil
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -39,7 +41,9 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSlider,
+    QSplitter,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -3098,9 +3102,35 @@ class MainWindow(QMainWindow):
         refresh_button.clicked.connect(lambda _checked=False: self.refresh_animation_list())
         layout.addWidget(refresh_button)
 
-        self.animation_list = QListWidget(panel)
+        self.animation_splitter = QSplitter(Qt.Orientation.Vertical, panel)
+        self.animation_splitter.setChildrenCollapsible(False)
+        self.animation_list = QListWidget(self.animation_splitter)
+        self.animation_list.setMinimumHeight(80)
         self.animation_list.currentItemChanged.connect(self._on_animation_selected)
-        layout.addWidget(self.animation_list, 1)
+
+        self.effect_parameters_panel = QWidget(self.animation_splitter)
+        effect_parameters_layout = QVBoxLayout(self.effect_parameters_panel)
+        effect_parameters_layout.setContentsMargins(0, 0, 0, 0)
+        effect_parameters_layout.setSpacing(4)
+        self.effect_parameters_title = QLabel("Effect Parameters", self.effect_parameters_panel)
+        self.effect_parameters_title.setStyleSheet("font-weight: bold;")
+        effect_parameters_layout.addWidget(self.effect_parameters_title)
+        self.effect_parameters_scroll = QScrollArea(self.effect_parameters_panel)
+        self.effect_parameters_scroll.setWidgetResizable(True)
+        self.effect_parameters_scroll.setMinimumHeight(50)
+        self.effect_parameters_widget = QWidget(self.effect_parameters_scroll)
+        self.effect_parameters_form = QFormLayout(self.effect_parameters_widget)
+        self.effect_parameters_form.setContentsMargins(0, 0, 0, 0)
+        self.effect_parameters_form.setVerticalSpacing(4)
+        self.effect_parameters_scroll.setWidget(self.effect_parameters_widget)
+        effect_parameters_layout.addWidget(self.effect_parameters_scroll, 1)
+
+        self.animation_splitter.addWidget(self.animation_list)
+        self.animation_splitter.addWidget(self.effect_parameters_panel)
+        self.animation_splitter.setStretchFactor(0, 3)
+        self.animation_splitter.setStretchFactor(1, 2)
+        self.animation_splitter.setSizes([220, 180])
+        layout.addWidget(self.animation_splitter, 1)
 
         self.animation_info = QLabel("Select an animation to inspect it.", panel)
         self.animation_info.setWordWrap(True)
@@ -3162,6 +3192,140 @@ class MainWindow(QMainWindow):
         self._update_animation_controls()
         return panel
 
+    @staticmethod
+    def _effect_parameter_sidecar(animation_class):
+        return Path(inspect.getfile(animation_class)).with_suffix(".json")
+
+    @staticmethod
+    def _is_finite_parameter_number(value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False
+        try:
+            return math.isfinite(value)
+        except OverflowError:
+            return False
+
+    @staticmethod
+    def _read_effect_parameter_sidecar(sidecar_path):
+        try:
+            parameters = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        if not isinstance(parameters, dict):
+            raise ValueError("Effect parameter sidecar must contain a JSON object")
+        return parameters
+
+    def _clear_effect_parameter_form(self):
+        while self.effect_parameters_form.count():
+            item = self.effect_parameters_form.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _refresh_effect_parameter_editor(self, animation_class):
+        self._clear_effect_parameter_form()
+        if animation_class is None:
+            return
+
+        sidecar_path = self._effect_parameter_sidecar(animation_class)
+        try:
+            parameters = self._read_effect_parameter_sidecar(sidecar_path)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            self.effect_parameters_form.addRow(QLabel(f"Cannot read parameters: {error}"))
+            return
+
+        editable_parameters = [
+            (name, value)
+            for name, value in parameters.items()
+            if self._is_finite_parameter_number(value)
+            or (
+                isinstance(value, list)
+                and len(value) == 2
+                and all(self._is_finite_parameter_number(item) for item in value)
+            )
+        ]
+        if not editable_parameters:
+            message = "No numeric parameter sidecar." if not sidecar_path.is_file() else "No numeric parameters."
+            self.effect_parameters_form.addRow(QLabel(message))
+            return
+
+        for name, value in editable_parameters:
+            label = name.replace("_", " ").capitalize()
+            if self._is_finite_parameter_number(value):
+                editor = self._new_effect_parameter_spin(value)
+                editor.valueChanged.connect(
+                    lambda new_value, path=sidecar_path, key=name: self._save_effect_parameter(
+                        path, key, new_value
+                    )
+                )
+                self.effect_parameters_form.addRow(label, editor)
+                continue
+
+            lower_editor = self._new_effect_parameter_spin(value[0])
+            upper_editor = self._new_effect_parameter_spin(value[1])
+
+            def save_range(_new_value, path=sidecar_path, key=name, lower=lower_editor, upper=upper_editor):
+                lower_value, upper_value = sorted((lower.value(), upper.value()))
+                lower.blockSignals(True)
+                upper.blockSignals(True)
+                lower.setValue(lower_value)
+                upper.setValue(upper_value)
+                lower.blockSignals(False)
+                upper.blockSignals(False)
+                self._save_effect_parameter(path, key, [lower_value, upper_value])
+
+            lower_editor.valueChanged.connect(save_range)
+            upper_editor.valueChanged.connect(save_range)
+            self.effect_parameters_form.addRow(
+                QLabel(label, self.effect_parameters_widget)
+            )
+            self.effect_parameters_form.addRow("from", lower_editor)
+            self.effect_parameters_form.addRow("to", upper_editor)
+
+    @staticmethod
+    def _new_effect_parameter_spin(value):
+        editor = QDoubleSpinBox()
+        editor.setRange(-1_000_000, 1_000_000)
+        editor.setMaximumWidth(110)
+        editor.setDecimals(2)
+        editor.setSingleStep(0.01)
+        editor.setKeyboardTracking(False)
+        editor.setValue(float(value))
+        return editor
+
+    def _save_effect_parameter(self, sidecar_path, name, value):
+        temporary_path = None
+        try:
+            parameters = self._read_effect_parameter_sidecar(sidecar_path)
+            parameters[name] = value
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=sidecar_path.parent,
+                suffix=".tmp",
+                delete=False,
+            ) as temporary_file:
+                temporary_path = Path(temporary_file.name)
+                json.dump(parameters, temporary_file, indent=2)
+                temporary_file.write("\n")
+            os.replace(temporary_path, sidecar_path)
+        except (OSError, ValueError, TypeError) as error:
+            QMessageBox.warning(
+                self,
+                "Effect Parameters",
+                f"Could not save {sidecar_path.name}: {error}",
+            )
+            return
+        finally:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+        if self.active_animation is not None:
+            self.animation_status.setText("Parameter saved; replay the effect to apply it.")
+
     def refresh_animation_list(self):
         self._stop_animation()
         selected_name = self.animation_list.currentItem().data(Qt.ItemDataRole.UserRole) if self.animation_list.currentItem() else None
@@ -3196,11 +3360,14 @@ class MainWindow(QMainWindow):
             self.animation_info.setText("No animations found in common/animations.")
         else:
             animation = self.animation_classes[current.data(Qt.ItemDataRole.UserRole)]
+            self._refresh_effect_parameter_editor(animation)
             self.animation_info.setText(
                 f"{animation.name} v{animation.version} by {animation.author}\n\n"
                 f"{animation.description}"
             )
             self.animation_status.setText("Ready")
+        if current is None:
+            self._refresh_effect_parameter_editor(None)
         self._update_animation_controls()
 
     def _update_animation_controls(self):
@@ -3240,7 +3407,13 @@ class MainWindow(QMainWindow):
             return False
         animation_class = self.animation_classes[item.data(Qt.ItemDataRole.UserRole)]
         animation = animation_class()
-        animation.initialise(self.led_count, {"positions": self.led_positions})
+        animation_parameters = {"positions": self.led_positions}
+        effect_parameters = self._read_effect_parameter_sidecar(
+            self._effect_parameter_sidecar(animation_class)
+        )
+        if effect_parameters:
+            animation_parameters[animation_class.name] = effect_parameters
+        animation.initialise(self.led_count, animation_parameters)
         self.active_animation = animation
         self.frame_number = 0
         return True
