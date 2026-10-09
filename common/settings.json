@@ -32,7 +32,7 @@
     "tree_luminosity_percent": 100,
     "tree_transparency_percent": 90,
     "background_luminosity_percent": 29,
-    "positions_file": ""
+    "positions_file": "pc_agent/frames/20261004_2012/positions_20261004_2012.json"
   },
   "night_schedule": {
     "latitude": 50.9283333333,

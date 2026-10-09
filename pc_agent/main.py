@@ -477,8 +477,7 @@ class ColorSetupDialog(QDialog):
         self.image_worker = None
         self.busy = False
         self.test_active = False
-        self.current_order = None
-        self.current_candidate = None
+        self.current_test = None
         self.pending_dialog_result = None
         self.pending_result = None
         self.pending_error = None
@@ -499,22 +498,31 @@ class ColorSetupDialog(QDialog):
         self.image_label.setStyleSheet("background: #20242a; color: white;")
         layout.addWidget(self.image_label, 1)
 
-        self.expected_color = QLabel("Expected strip color: #FF8040")
+        self.expected_color = QLabel("Waiting for primary-color test")
         self.expected_color.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.expected_color.setStyleSheet(
-            "background: #FF8040; color: #20242a; padding: 8px; font-weight: bold;"
+            "background: #20242a; color: white; padding: 8px; font-weight: bold;"
         )
         layout.addWidget(self.expected_color)
 
         button_layout = QHBoxLayout()
-        self.yes_button = QPushButton("Yes")
-        self.no_button = QPushButton("No")
+        self.component_buttons = {}
+        component_styles = {
+            "red": "background-color: #D94A4A; color: white;",
+            "green": "background-color: #399A62; color: white;",
+            "blue": "background-color: #3977C5; color: white;",
+        }
+        for component in ("red", "green", "blue"):
+            button = QPushButton(component.capitalize())
+            button.setMinimumHeight(36)
+            button.setStyleSheet(component_styles[component])
+            button.clicked.connect(
+                lambda _checked=False, observed=component: self._record_component(observed)
+            )
+            self.component_buttons[component] = button
+            button_layout.addWidget(button)
         self.abort_button = QPushButton("Abort")
-        self.yes_button.clicked.connect(self._confirm)
-        self.no_button.clicked.connect(self._next_candidate)
         self.abort_button.clicked.connect(self._abort)
-        button_layout.addWidget(self.yes_button)
-        button_layout.addWidget(self.no_button)
         button_layout.addWidget(self.abort_button)
         layout.addLayout(button_layout)
 
@@ -526,8 +534,8 @@ class ColorSetupDialog(QDialog):
 
     def _set_busy(self, busy):
         self.busy = busy
-        self.yes_button.setEnabled(not busy and self.test_active)
-        self.no_button.setEnabled(not busy and self.test_active)
+        for button in self.component_buttons.values():
+            button.setEnabled(not busy and self.test_active)
         self.abort_button.setEnabled(not busy)
 
     def _run_operation(self, operation, on_success):
@@ -600,17 +608,27 @@ class ColorSetupDialog(QDialog):
                 raise
             return status, image
 
-        self._run_operation(start_and_capture, self._show_candidate)
+        self._run_operation(start_and_capture, self._show_component)
 
-    def _next_candidate(self):
-        def advance_and_capture():
+    def _record_component(self, observed_component):
+        self.image_refresh_timer.stop()
+
+        def record_and_capture():
             status = request_json(
                 "pi",
                 "/color-test/decision",
                 self.settings,
                 method="POST",
-                payload={"decision": "no"},
+                payload={
+                    "decision": "component",
+                    "observed_component": observed_component,
+                },
             )
+            if status.get("decision") == "yes":
+                self.settings["led"]["pixel_order"] = status["pixel_order"]
+                save_settings(self.settings)
+                status["shutdown_failures"] = request_remote_agent_shutdowns(self.settings)
+                return status, None
             try:
                 image = request_image("laptop", "/capture", self.settings)
             except Exception:
@@ -627,28 +645,46 @@ class ColorSetupDialog(QDialog):
                 raise
             return status, image
 
-        self._run_operation(advance_and_capture, self._show_candidate)
+        self._run_operation(record_and_capture, self._component_recorded)
 
-    def _show_candidate(self, result):
+    def _component_recorded(self, result):
+        status, image = result
+        if status.get("decision") == "yes":
+            self._confirm_complete(status)
+            return
+        self._show_component((status, image))
+
+    def _show_component(self, result):
         status, image = result
         self.test_active = True
-        self.current_order = status["pixel_order"]
-        self.current_candidate = status
+        self.current_test = status
         self._set_busy(False)
-        self._set_candidate_prompt()
+        self._set_component_prompt()
         if not self._display_image(image):
             self._operation_failed("The laptop agent returned an unreadable image.")
             return
         self.image_refresh_timer.start()
 
-    def _set_candidate_prompt(self):
-        if self.current_candidate is None:
+    def _set_component_prompt(self):
+        if self.current_test is None:
             return
+        component = self.current_test["component"]
+        message = self.current_test.get("message", "")
+        prefix = f"{message} " if message else ""
         self.status_label.setText(
-            "Candidate {candidate_number} of {candidate_count}: {pixel_order}. "
-            "Choose Yes if the strip matches the color below.".format(
-                **self.current_candidate
-            )
+            f"{prefix}Signal {self.current_test['component_number']} of 3: "
+            f"{component} only. Which color lights?"
+        )
+        component_colors = {
+            "red": "#FF0000",
+            "green": "#00FF00",
+            "blue": "#0000FF",
+        }
+        color = component_colors[component]
+        foreground = "white" if component == "blue" else "#20242a"
+        self.expected_color.setText(f"Sending {component.upper()} only")
+        self.expected_color.setStyleSheet(
+            f"background: {color}; color: {foreground}; padding: 8px; font-weight: bold;"
         )
 
     def _display_image(self, image):
@@ -682,16 +718,14 @@ class ColorSetupDialog(QDialog):
         if not self.test_active:
             return
         if self._display_image(image):
-            self._set_candidate_prompt()
+            self._set_component_prompt()
         else:
             self._show_refresh_error("The laptop returned an unreadable image")
 
     def _show_refresh_error(self, _message):
-        if self.test_active and self.current_candidate is not None:
-            self.status_label.setText(
-                "Candidate {candidate_number} of {candidate_count}: {pixel_order}. "
-                "Camera refresh failed; retrying.".format(**self.current_candidate)
-            )
+        if self.test_active and self.current_test is not None:
+            self._set_component_prompt()
+            self.status_label.setText(f"{self.status_label.text()} Camera refresh failed; retrying.")
 
     def _image_refresh_finished(self, worker):
         if self.image_worker is worker:
@@ -701,26 +735,6 @@ class ColorSetupDialog(QDialog):
             result = self.pending_dialog_result
             self.pending_dialog_result = None
             QDialog.done(self, result)
-
-    def _confirm(self):
-        self.image_refresh_timer.stop()
-
-        def save_selection():
-            status = request_json(
-                "pi",
-                "/color-test/decision",
-                self.settings,
-                method="POST",
-                payload={"decision": "yes"},
-            )
-            if status["pixel_order"] != self.current_order:
-                raise AgentError("The Pi did not confirm the selected pixel order")
-            self.settings["led"]["pixel_order"] = status["pixel_order"]
-            save_settings(self.settings)
-            status["shutdown_failures"] = request_remote_agent_shutdowns(self.settings)
-            return status
-
-        self._run_operation(save_selection, self._confirm_complete)
 
     def _confirm_complete(self, result):
         self.test_active = False

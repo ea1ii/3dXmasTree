@@ -23,75 +23,100 @@ from common.Xmas_shared import start_exit_key_monitor
 from led_controller import NeoPixelStrip, PIXEL_ORDERS, SimulatedStrip
 
 
-TARGET_COLOR = (255, 128, 64)
-
-
 class ColorTest:
+    COMPONENTS = ("red", "green", "blue")
+    COMPONENT_COLORS = {
+        "red": (255, 0, 0),
+        "green": (0, 255, 0),
+        "blue": (0, 0, 255),
+    }
+    TEST_PIXEL_ORDER = "RGB"
+
     def __init__(self, settings, hardware):
         self.settings = settings
         self.hardware = hardware
         self.strip = None
-        self.candidate_index = None
+        self.component_index = None
+        self.observed_order = []
 
-    def _apply_candidate(self, index):
-        if self.strip is not None:
-            self.strip.close()
-
-        order = PIXEL_ORDERS[index]
+    def _create_strip(self):
         led_settings = self.settings["led"]
         if self.hardware:
             self.strip = NeoPixelStrip(
                 led_settings["test_count"],
                 led_settings["pin"],
                 led_settings["brightness"],
-                order,
+                self.TEST_PIXEL_ORDER,
             )
         else:
-            self.strip = SimulatedStrip(led_settings["test_count"], order)
+            self.strip = SimulatedStrip(
+                led_settings["test_count"],
+                self.TEST_PIXEL_ORDER,
+            )
 
-        self.candidate_index = index
-        self.strip.fill(TARGET_COLOR)
+    def _show_component(self):
+        component = self.COMPONENTS[self.component_index]
+        self.strip.fill(self.COMPONENT_COLORS[component])
         return self.status()
 
     def status(self):
         return {
-            "pixel_order": PIXEL_ORDERS[self.candidate_index],
-            "candidate_number": self.candidate_index + 1,
-            "candidate_count": len(PIXEL_ORDERS),
-            "target_color": "#FF8040",
+            "test_pixel_order": self.TEST_PIXEL_ORDER,
+            "component": self.COMPONENTS[self.component_index],
+            "component_number": self.component_index + 1,
+            "component_count": len(self.COMPONENTS),
             "test_count": self.settings["led"]["test_count"],
         }
 
     def start(self):
-        if self.candidate_index is not None:
+        if self.component_index is not None:
             raise RuntimeError("A color test is already running")
         count = self.settings["led"]["test_count"]
         if not isinstance(count, int) or not 1 <= count <= 10000:
             raise ValueError("led.test_count must be between 1 and 10000")
-        return self._apply_candidate(0)
+        self.observed_order = []
+        self._create_strip()
+        self.component_index = 0
+        return self._show_component()
 
-    def decide(self, decision):
-        if self.candidate_index is None:
+    def decide(self, decision, observed_component=None):
+        if self.component_index is None:
             raise RuntimeError("No color test is running")
 
-        if decision == "no":
-            return self._apply_candidate((self.candidate_index + 1) % len(PIXEL_ORDERS))
         if decision == "abort":
             self.stop()
             return {"decision": "abort"}
-        if decision == "yes":
-            self.settings["led"]["pixel_order"] = PIXEL_ORDERS[self.candidate_index]
-            save_settings(self.settings)
-            selected_order = PIXEL_ORDERS[self.candidate_index]
-            self.stop()
-            return {"decision": "yes", "pixel_order": selected_order}
-        raise ValueError("decision must be yes, no, or abort")
+        if decision != "component":
+            raise ValueError("decision must be component or abort")
+        if observed_component not in self.COMPONENTS:
+            raise ValueError("observed_component must be red, green, or blue")
+
+        self.observed_order.append(observed_component[0].upper())
+        if len(set(self.observed_order)) != len(self.observed_order):
+            self.observed_order = []
+            self.component_index = 0
+            status = self._show_component()
+            status["message"] = "Choose each visible primary once. Restarting with red."
+            return status
+
+        if self.component_index + 1 < len(self.COMPONENTS):
+            self.component_index += 1
+            return self._show_component()
+
+        selected_order = "".join(self.observed_order)
+        if selected_order not in PIXEL_ORDERS:
+            raise ValueError("Observed channel mapping is not a supported pixel order")
+        self.settings["led"]["pixel_order"] = selected_order
+        save_settings(self.settings)
+        self.stop()
+        return {"decision": "yes", "pixel_order": selected_order}
 
     def stop(self):
         if self.strip is not None:
             self.strip.close()
             self.strip = None
-        self.candidate_index = None
+        self.component_index = None
+        self.observed_order = []
 
 
 class LengthTest:
@@ -265,7 +290,10 @@ def make_handler(color_test, token, length_test=None, position_test=None):
                 if self.path == "/color-test/start":
                     result = color_test.start()
                 elif self.path == "/color-test/decision":
-                    result = color_test.decide(payload.get("decision"))
+                    result = color_test.decide(
+                        payload.get("decision"),
+                        payload.get("observed_component"),
+                    )
                 elif self.path == "/length-test/start" and length_test is not None:
                     result = length_test.start()
                 elif self.path == "/length-test/next" and length_test is not None:

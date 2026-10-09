@@ -13,6 +13,7 @@ class GranularAvalanche(SpatialAnimation):
         self.gravity = 3.0 * self.height
         self.grain_count = 80
         self.grains = [self._new_grain() for _ in range(self.grain_count)]
+        self.settled_elapsed = 0.0
         self.color = _rgb(0.09, 0.8, 1)
 
     def _new_grain(self):
@@ -38,6 +39,14 @@ class GranularAvalanche(SpatialAnimation):
             grain["height"] -= grain["speed"] * delta
             grain["angle"] += math.sin(self.elapsed + grain["height"] * 4) * 0.12 * delta
             grain["height"] = min(self.height, max(0.0, grain["height"]))
+
+        if all(grain["height"] <= 0.0 for grain in self.grains):
+            self.settled_elapsed += delta
+            if self.settled_elapsed >= 1.0:
+                self.grains = [self._new_grain() for _ in range(self.grain_count)]
+                self.settled_elapsed = 0.0
+        else:
+            self.settled_elapsed = 0.0
 
         for first_index, first in enumerate(self.grains):
             for second in self.grains[first_index + 1:]:
