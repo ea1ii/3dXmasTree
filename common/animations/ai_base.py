@@ -54,13 +54,26 @@ class SpatialAnimation(Animation, ABC):
         maximum_z = max(position[2] for position in positions)
         self.center_z = (minimum_z + maximum_z) / 2
         radial_extent = max(math.hypot(x, y) for x, y, _z in positions)
-        self.scale = max(maximum_z - minimum_z, radial_extent * 2, 1e-6)
+        tree_height = parameters.get("tree_height_mm")
+        tree_radius = parameters.get("tree_radius_mm")
+        if tree_height is not None:
+            tree_height = float(tree_height)
+            if not math.isfinite(tree_height) or tree_height <= 0:
+                raise ValueError("tree_height_mm must be finite and positive")
+        if tree_radius is not None:
+            tree_radius = float(tree_radius)
+            if not math.isfinite(tree_radius) or tree_radius <= 0:
+                raise ValueError("tree_radius_mm must be finite and positive")
+
+        tree_height = tree_height or maximum_z - minimum_z
+        tree_radius = tree_radius or radial_extent
+        self.scale = max(tree_height, tree_radius * 2, 1e-6)
         self.positions = [
             (x / self.scale, y / self.scale, (z - minimum_z) / self.scale)
             for x, y, z in positions
         ]
-        self.height = max((maximum_z - minimum_z) / self.scale, 1e-6)
-        self.tree_radius = radial_extent / self.scale
+        self.height = max(tree_height / self.scale, 1e-6)
+        self.tree_radius = tree_radius / self.scale
         self.elapsed = 0.0
         self.running = True
         self._initialise_effect(parameters)

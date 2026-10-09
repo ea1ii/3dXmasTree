@@ -3421,7 +3421,21 @@ class MainWindow(QMainWindow):
             return False
         animation_class = self.animation_classes[item.data(Qt.ItemDataRole.UserRole)]
         animation = animation_class()
-        animation_parameters = {"positions": self.led_positions}
+        tree_height = (
+            self.tree_cone["height_mm"]
+            if self.tree_cone is not None
+            else self.tree_height_mm
+        )
+        tree_radius = (
+            self.tree_cone["base_radius_mm"]
+            if self.tree_cone is not None
+            else self.tree_height_mm * 0.34
+        )
+        animation_parameters = {
+            "positions": self.led_positions,
+            "tree_height_mm": tree_height,
+            "tree_radius_mm": tree_radius,
+        }
         effect_parameters = self._read_effect_parameter_sidecar(
             self._effect_parameter_sidecar(animation_class)
         )
