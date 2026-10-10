@@ -199,6 +199,7 @@ def positions_from_detections(
     frame_height_mm,
     match_tolerance_mm,
     max_distance_mm,
+    enforce_max_spacing=False,
 ):
     if frame_height_mm <= 0 or match_tolerance_mm < 0:
         raise ValueError("Frame height must be positive and tolerance cannot be negative")
@@ -245,7 +246,9 @@ def positions_from_detections(
         point["y"] -= base_y
         point["z"] = max(0.0, point["z"] - base_z)
 
-    return constrain_max_spacing(points, max_distance_mm)
+    if enforce_max_spacing:
+        return constrain_max_spacing(points, max_distance_mm)
+    return points
 
 
 def calibrate_frame_set(
@@ -254,6 +257,7 @@ def calibrate_frame_set(
     frame_height_mm,
     match_tolerance_mm,
     max_distance_mm,
+    enforce_max_spacing=False,
 ):
     detections = {
         view: {index: detect_brightest_spot(frame_paths[view][index]) for index in led_indices}
@@ -265,6 +269,7 @@ def calibrate_frame_set(
         frame_height_mm,
         match_tolerance_mm,
         max_distance_mm,
+        enforce_max_spacing,
     )
     return points, detections
 

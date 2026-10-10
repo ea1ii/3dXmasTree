@@ -1856,6 +1856,10 @@ class CalibrationPage(QDialog):
         self.max_distance_spin.setMinimumWidth(128)
         self.max_distance_spin.setMaximumWidth(140)
         settings_layout.addWidget(self.max_distance_spin)
+        self.spacing_adjust_toggle = QCheckBox("Enforce max spacing")
+        self.spacing_adjust_toggle.setToolTip(
+            "Adjust positions so adjacent LEDs do not exceed the Max LED distance."
+        )
         self.crosshair_toggle = QCheckBox("Adjust LED centers")
         self.crosshair_toggle.setToolTip(
             "Enable the red crosshairs in Picture mode; drag and release to update a detected center."
@@ -1864,6 +1868,11 @@ class CalibrationPage(QDialog):
         settings_layout.addWidget(self.crosshair_toggle)
         settings_layout.addStretch(1)
         right_layout.addLayout(settings_layout)
+
+        spacing_layout = QHBoxLayout()
+        spacing_layout.addWidget(self.spacing_adjust_toggle)
+        spacing_layout.addStretch(1)
+        right_layout.addLayout(spacing_layout)
 
         fit_layout = QVBoxLayout()
         fit_layout.setSpacing(2)
@@ -1956,7 +1965,8 @@ class CalibrationPage(QDialog):
         self.next_button.setEnabled(False)
         self.save_button.setEnabled(False)
         self.tolerance_spin.valueChanged.connect(self._recalculate)
-        self.max_distance_spin.valueChanged.connect(self._recalculate)
+        self.max_distance_spin.valueChanged.connect(self._apply_fit)
+        self.spacing_adjust_toggle.toggled.connect(self._apply_fit)
         self.height_scale_spin.valueChanged.connect(self._apply_fit)
         self.width_scale_spin.valueChanged.connect(self._apply_fit)
         self._build_3d_tree()
@@ -2064,10 +2074,15 @@ class CalibrationPage(QDialog):
                     "z": point["z"] - origin_z + self.center_offset[2],
                 }
             )
-        self.points = constrain_max_spacing(
-            fitted_points,
-            self.max_distance_spin.value(),
-        )
+        if self.spacing_adjust_toggle.isChecked():
+            self.points = constrain_max_spacing(
+                fitted_points,
+                self.max_distance_spin.value(),
+            )
+        else:
+            self.points = [
+                {**point, "adjusted": False} for point in fitted_points
+            ]
         self._refresh_reference_planes()
         self._update_results()
 
