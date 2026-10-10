@@ -98,3 +98,32 @@ If you like the project. Feel free to collaborate.
 
 It's weird to say this with October just started, but Happy Xmas, all!
 
+## Electrical considerations
+
+Using [5V 12V 50pcs WS2811 Pixels Digital Addressable LED String Lights Waterproof RGB](https://www.ebay.co.uk/itm/286874685678?var=588901302973).
+
+Manufacturer rates 0.3 w/LED
+
+Using 5 strips. Adds up to 5 * 50 LEDs, and 250 * 0.3 = 75 w.
+
+So, 75w / 5v = 15 A.
+
+Assuming standard copper wire with a target of keeping voltage drop under 3% to 5%:
+
+• Short runs (1 meter or less total path): At least 1.5 mm² to 2.5 mm² (approx. 16 AWG to 14 AWG) for safe current-carrying capacity (ampacity) without dangerous heating.
+
+• Medium runs (2 meters total path): At least 2.5 mm² to 4 mm² (approx. 14 AWG to 12 AWG). A 1.5 mm² wire over a 2m run at 15A drops about 0.72V (~14.4% drop), which can cause dimming or device malfunction.
+
+• Longer runs (3 to 5+ meters): Up to 6 mm² to 10 mm² (approx. 10 AWG to 6 AWG) or you must step up the voltage (e.g., use 24V or 48V with a buck converter near the load) to prevent excessive power loss and voltage drop.
+
+
+Key Considerations for 5V at 15A
+
+• Total Length is Round-Trip: Remember to calculate the length for both the positive and negative conductors combined (e.g., 2 meters out and 2 meters back = 4 meters of total wire resistance).
+
+• Ampacity vs. Voltage Drop: While a thin wire (like 1.5 mm²) might technically handle 15A briefly in open air without melting, the 5V supply means you cannot afford high resistance.
+
+• Connectors Matter: Standard USB or small jumper connectors will fail or melt at 15A; you need heavy-duty terminals (like XT60, Anderson Powerpoles, or bolted terminal blocks).
+
+
+

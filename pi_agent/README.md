@@ -50,3 +50,100 @@ Set `night_schedule.latitude` and `night_schedule.longitude` in `common/settings
 `--once ANIMATION` plays only the named animation until `Ctrl+Q` (or `Ctrl+F4`) is pressed. It cannot be combined with `--night-schedule`.
 
 Shared animations belong under `common/animations`. Put any third-party animation dependencies in a `requirements*.txt` file in that animation folder tree; the launcher discovers these recursively.
+
+## Electrical considerations
+
+Using [5V 12V 50pcs WS2811 Pixels Digital Addressable LED String Lights Waterproof RGB](https://www.ebay.co.uk/itm/286874685678?var=588901302973).
+
+Manufacturer rates 0.3 w/LED
+
+Using 5 strips. Adds up to 5 * 50 LEDs, and 250 * 0.3 = 75 w.
+
+So, 75w / 5v = 15 A.
+
+Assuming standard copper wire with a target of keeping voltage drop under 3% to 5%:
+
+• Short runs (1 meter or less total path): At least 1.5 mm² to 2.5 mm² (approx. 16 AWG to 14 AWG) for safe current-carrying capacity (ampacity) without dangerous heating.
+
+• Medium runs (2 meters total path): At least 2.5 mm² to 4 mm² (approx. 14 AWG to 12 AWG). A 1.5 mm² wire over a 2m run at 15A drops about 0.72V (~14.4% drop), which can cause dimming or device malfunction.
+
+• Longer runs (3 to 5+ meters): Up to 6 mm² to 10 mm² (approx. 10 AWG to 6 AWG) or you must step up the voltage (e.g., use 24V or 48V with a buck converter near the load) to prevent excessive power loss and voltage drop.
+
+
+Key Considerations for 5V at 15A
+
+• Total Length is Round-Trip: Remember to calculate the length for both the positive and negative conductors combined (e.g., 2 meters out and 2 meters back = 4 meters of total wire resistance).
+
+• Ampacity vs. Voltage Drop: While a thin wire (like 1.5 mm²) might technically handle 15A briefly in open air without melting, the 5V supply means you cannot afford high resistance.
+
+• Connectors Matter: Standard USB or small jumper connectors will fail or melt at 15A; you need heavy-duty terminals (like XT60, Anderson Powerpoles, or bolted terminal blocks).
+
+### Pinout
+
+![Raspberry Pi header pinout](Raspberry-Pi-4-GPIO-Pinout-1.png)
+
+### Raspberry Pi 4 Power Pins (3.3 V, 5 V, GND)
+
+#### 5 V Pins (direct from USB‑C power input)
+
+These are unregulated 5 V straight from the Pi’s power supply.
+
+• Pin 2 — 5 V
+
+• Pin 4 — 5 V
+
+Use these for powering Neopixels (they need 5 V).
+
+#### 3.3 V Pins (regulated)
+
+These are safe for sensors, logic, and low‑power modules.
+
+• Pin 1 — 3.3 V
+
+• Pin 17 — 3.3 V
+
+Do NOT power Neopixels from 3.3 V.
+
+#### Ground Pins (GND)
+
+You can use any of these:
+
+• Pin 6 — GND
+
+• Pin 9 — GND
+
+• Pin 14 — GND
+
+• Pin 20 — GND
+
+• Pin 25 — GND
+
+• Pin 30 — GND
+
+• Pin 34 — GND
+
+• Pin 39 — GND
+
+For Neopixels, choose a GND close to Pin 12 (GPIO18) to reduce noise.
+
+#### Recommended wiring for Neopixels on Pi 4
+
+##### Signal
+
+PIO18 (Pin 12) → Neopixel DIN
+
+##### Power
+
+• Pin 4 (5 V) → Neopixel 5 V
+
+• Pin 6 (GND) → Neopixel GND
+
+• Pi GND must be shared with Neopixel GND
+
+##### Optional but strongly recommended
+
+• Level shifter (3.3 V → 5 V)
+
+• 1000 µF capacitor across 5 V and GND
+
+• 330–470 Ω resistor in series with the data line

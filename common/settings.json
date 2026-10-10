@@ -12,6 +12,7 @@
     "token_env": "XMAS_AGENT_TOKEN"
   },
   "led": {
+    "pin": "D18",
     "capture_test_led_count": 100,
     "maxLEDdist": 120.0,
     "simulated_tree_height_mm": 1200
