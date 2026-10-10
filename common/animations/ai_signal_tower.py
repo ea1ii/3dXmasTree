@@ -8,11 +8,13 @@ class SignalTower(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "A moving beacon climbs the trunk and sends expanding rings outward."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.period = self.generator.uniform(4.0, 7.0)
         self.hue = self.generator.uniform(0.08, 0.16)
         self.width = max(self.tree_radius * 0.13, 0.025)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         phase = (self.elapsed / self.period) % 1.0
         height = phase * self.height

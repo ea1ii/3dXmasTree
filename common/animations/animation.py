@@ -52,6 +52,25 @@ class Animation(ABC):
         if not math.isfinite(value) or not 0 <= value <= 1:
             raise ValueError(f"{name} must be between 0 and 1")
         return value
+        
+    # Loads the effect parameters, combining defaults, sidecar, and overrides.
+    @classmethod
+    def _load_effect_parameters(cls, parameters, effect_name, defaults, sidecar_path):
+        if not isinstance(parameters, Mapping):
+            raise ValueError("parameters must be a mapping")
+        try:
+            sidecar_parameters = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            sidecar_parameters = {}
+        except json.JSONDecodeError as error:
+            raise ValueError(f"Invalid {effect_name} parameter sidecar: {error}") from error
+        if not isinstance(sidecar_parameters, dict):
+            raise ValueError(f"{effect_name} parameter sidecar must contain a JSON object")
+
+        overrides = parameters.get(effect_name, {})
+        if not isinstance(overrides, Mapping):
+            raise ValueError(f"parameters[{effect_name!r}] must be a mapping")
+        return {**defaults, **sidecar_parameters, **overrides}
 
     # Persists the effect parameters to a sidecar JSON file, ensuring atomic writes.
     @classmethod

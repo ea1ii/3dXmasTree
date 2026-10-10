@@ -9,10 +9,12 @@ class GravityWell(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "A moving 3D well bends color bands into a swirling spiral."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.phase = self.generator.uniform(0, 2 * math.pi)
         self.hue = self.generator.random()
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for x, y, z in self.positions:

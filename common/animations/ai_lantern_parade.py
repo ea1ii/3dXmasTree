@@ -9,12 +9,14 @@ class LanternParade(SpatialAnimation):
     version = "0.1.1"
     description = "Warm lantern groups orbit at staggered heights and gather apart."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.lanterns = [
             (self.generator.uniform(0, 2 * math.pi), self.generator.uniform(0.12, 0.3), self.generator.uniform(0.12, 0.88), _rgb(self.generator.uniform(0.055, 0.13), 0.62, 1))
             for _ in range(36)
         ]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = [(0, 0, 0)] * self.led_count
         for phase, speed, height, color in self.lanterns:

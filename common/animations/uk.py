@@ -19,6 +19,7 @@ class UkAnimation(Animation):
     EXPANSION_DURATION_RANGE = (1.5, 3.5)
     COLLAPSE_DURATION_RANGE = (0.35, 0.8)
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -87,6 +88,7 @@ class UkAnimation(Animation):
                 else:
                     self._next_cycle()
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

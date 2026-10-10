@@ -15,6 +15,7 @@ class KnifeAnimation(Animation):
     ROTATION_DURATION_RANGE = (2.0, 5.0)
     MIN_HUE_SEPARATION = 0.1
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -88,6 +89,7 @@ class KnifeAnimation(Animation):
                 self.rotation_duration = self.generator.uniform(*self.ROTATION_DURATION_RANGE)
                 self.rotation_direction = self.generator.choice((-1.0, 1.0))
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

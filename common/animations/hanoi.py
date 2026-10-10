@@ -18,6 +18,7 @@ class HanoiAnimation(Animation):
     FLASH_COUNT = 3
     EMPTY_HOLD_SECONDS = 0.3
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -146,6 +147,7 @@ class HanoiAnimation(Animation):
             return self.current_color
         return self.settled_colors[-1]
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

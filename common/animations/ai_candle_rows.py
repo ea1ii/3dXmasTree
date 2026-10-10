@@ -9,10 +9,12 @@ class CandleRows(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Warm LED rows flicker softly like a tree of candles."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.row_phases = [self.generator.random() for _ in range(9)]
         self.row_rates = [self.generator.uniform(0.25, 0.55) for _ in range(9)]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for _x, _y, z in self.positions:

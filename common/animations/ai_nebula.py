@@ -9,6 +9,7 @@ class Nebula(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Layered violet, teal, and blue cloud fields drift through 3D space."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.waves = [
             (
@@ -19,6 +20,7 @@ class Nebula(SpatialAnimation):
             for _ in range(5)
         ]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for point in self.positions:

@@ -14,6 +14,7 @@ class FrontsAnimation(Animation):
 
     SWEEP_DURATION_RANGE = (0.5, 2.0)
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -70,6 +71,7 @@ class FrontsAnimation(Animation):
         self.elapsed_seconds = 0.0
         self.sweep_complete = False
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

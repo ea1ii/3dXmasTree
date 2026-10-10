@@ -9,6 +9,7 @@ class Resonance(SpatialAnimation):
     version = "0.1.1"
     description = "A driven damped oscillator brightens as its drive crosses resonance."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.natural_frequency = self.generator.uniform(5.0, 9.0)
         self.damping_ratio = self.generator.uniform(0.08, 0.2)
@@ -21,6 +22,7 @@ class Resonance(SpatialAnimation):
         self.color_low = _rgb(0.58, 0.85, 1)
         self.color_high = _rgb(0.1, 0.95, 1)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         drive_fraction = 0.5 + 0.5 * math.sin(self.elapsed * 0.55)
         drive_frequency = self.drive_start + (self.drive_end - self.drive_start) * drive_fraction

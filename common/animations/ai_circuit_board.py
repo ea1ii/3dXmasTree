@@ -9,6 +9,7 @@ class CircuitBoard(SpatialAnimation):
     version = "0.1.1"
     description = "Branching circuits light from the trunk toward the tree tips."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         branch_count = 8
         self.branches = [[] for _ in range(branch_count)]
@@ -23,6 +24,7 @@ class CircuitBoard(SpatialAnimation):
         self.tail_fraction = 0.34
         self.colors = [_rgb(0.42 + branch * 0.07, 0.85, 1) for branch in range(len(self.branches))]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         intensities = [0.0] * self.led_count
         frame = [(0, 0, 0)] * self.led_count

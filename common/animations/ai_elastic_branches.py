@@ -8,6 +8,7 @@ class ElasticBranches(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "A spring-linked tree flexes and settles under changing wind loads."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.nodes = [list(point) for point in self.positions]
         self.rest_lengths = {}
@@ -28,6 +29,7 @@ class ElasticBranches(SpatialAnimation):
         self.color = _rgb(0.34, 0.8, 1)
         self.substep = 1 / 90
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         remaining = delta
         while remaining > 0:

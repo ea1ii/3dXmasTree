@@ -16,6 +16,7 @@ class BlobAnimation(Animation):
     SIZE_CHANGE_RANGE = (1.5, 4.0)
     HUE_CHANGE_RANGE = (3.0, 8.0)
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -142,6 +143,7 @@ class BlobAnimation(Animation):
                     self.velocity[0] -= normal_y * tangent_kick
                     self.velocity[1] += normal_x * tangent_kick
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

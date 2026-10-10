@@ -9,10 +9,12 @@ class LuminousTide(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "A turquoise ring tide circles and rises through the tree."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.speed = self.generator.uniform(0.14, 0.25)
         self.hue = self.generator.uniform(0.48, 0.56)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for x, y, z in self.positions:

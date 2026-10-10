@@ -9,6 +9,7 @@ class ConvectionCells(SpatialAnimation):
     version = "0.1.3"
     description = "Hot and cool convection cells circulate through calibrated tree branches."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.neighbors = []
         self.upward_neighbors = []
@@ -79,6 +80,7 @@ class ConvectionCells(SpatialAnimation):
             self.temperature[index] = 1.0
             self.pop_brightness[index] = 1.0
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         remaining = delta
         while remaining > 0:

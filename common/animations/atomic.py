@@ -16,6 +16,7 @@ class AtomicAnimation(Animation):
     POINT_RADIUS_SPACING_FRACTION = 0.12
     SOFT_EDGE_FRACTION = 0.15
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -113,6 +114,7 @@ class AtomicAnimation(Animation):
                     self.radius = 0.0
                     self._begin_expansion()
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

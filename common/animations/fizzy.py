@@ -14,6 +14,7 @@ class FizzyAnimation(Animation):
 
     CYCLE_DURATION_RANGE = (0.18, 0.65)
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -36,6 +37,7 @@ class FizzyAnimation(Animation):
             self.elapsed_seconds.append(generator.random() * self.cycle_durations[-1])
         self.running = True
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

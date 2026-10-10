@@ -9,11 +9,13 @@ class CrownPulse(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Bright crown-born rings travel downward, then sweep back up."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.period = self.generator.uniform(4.0, 7.0)
         self.width = 0.045
         self.color = _rgb(self.generator.uniform(0.08, 0.16), 0.85, 1)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         phase = (self.elapsed % self.period) / self.period
         position = 1 - abs(2 * phase - 1)

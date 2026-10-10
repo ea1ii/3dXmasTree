@@ -9,6 +9,7 @@ class ColorMosaic(SpatialAnimation):
     version = "0.1.1"
     description = "Irregular 3D color patches slowly trade hues."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.seeds = [self.generator.choice(self.positions) for _ in range(12)]
         self.hues = [self.generator.random() for _ in self.seeds]
@@ -16,6 +17,7 @@ class ColorMosaic(SpatialAnimation):
         self.patch_speeds = [self.generator.uniform(0.1, 0.28) for _ in self.seeds]
         self.hue_speeds = [self.generator.uniform(-0.035, 0.035) for _ in self.seeds]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         moving_seeds = [
             (

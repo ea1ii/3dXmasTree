@@ -20,6 +20,7 @@ class ZarathustraIntroAnimation(Animation):
         (255, 250, 224),
     )
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -101,6 +102,7 @@ class ZarathustraIntroAnimation(Animation):
             )
         return self.COLORS[5], 1.0, "finale"
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

@@ -9,6 +9,7 @@ class OrbitDecay(SpatialAnimation):
     version = "0.1.3"
     description = "A particle spirals inward under gravity and gradual orbital drag."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.radius_limit = max(self.tree_radius * 0.85, 0.08)
         self.particle_radius = max(self.tree_radius * 0.72, 0.14)
@@ -29,6 +30,7 @@ class OrbitDecay(SpatialAnimation):
         factor = -self.mu / (radius_squared * radius)
         return [factor * value for value in relative]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         steps = max(1, min(12, math.ceil(delta / 0.02)))
         step = delta / steps

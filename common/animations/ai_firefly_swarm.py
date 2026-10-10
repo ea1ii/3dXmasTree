@@ -11,6 +11,7 @@ class FireflySwarm(SpatialAnimation):
     FLY_COUNT = 24
     GLOW_RADIUS_TREE_RATIO = 0.17
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.flies = [
             (
@@ -23,6 +24,7 @@ class FireflySwarm(SpatialAnimation):
             for _ in range(self.FLY_COUNT)
         ]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         strengths = [0.0] * self.led_count
         for phase, vertical_phase, speed, radius_scale, pulse_phase in self.flies:

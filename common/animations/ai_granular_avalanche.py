@@ -9,6 +9,7 @@ class GranularAvalanche(SpatialAnimation):
     version = "0.1.2"
     description = "Grains accelerate down branches and collide in small avalanches."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.gravity = 3.0 * self.height
         self.grain_count = 80
@@ -27,6 +28,7 @@ class GranularAvalanche(SpatialAnimation):
             "stick_angle": self.generator.uniform(0.18, 0.48),
         }
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         for grain in self.grains:
             height = grain["height"]

@@ -8,12 +8,14 @@ class OrbitBreak(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "A ring of colored lights breaks into orbiting points and reforms."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.count = 12
         self.phase = self.generator.random() * 2 * math.pi
         self.period = self.generator.uniform(8.0, 12.0)
         self.colors = [_rgb(index / self.count, 0.9, 1) for index in range(self.count)]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         cycle = (self.elapsed / self.period) % 1.0
         break_amount = abs(2 * cycle - 1)

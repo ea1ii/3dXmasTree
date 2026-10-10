@@ -14,6 +14,7 @@ class Wavy(SpatialAnimation):
     WAVE_SPEED_RANGE = (0.18, 0.42)
     SPATIAL_CYCLES_RANGE = (1.0, 4.0)
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.pattern_mode = self.generator.choice(("solid", "gradient"))
         if self.pattern_mode == "solid":
@@ -111,6 +112,7 @@ class Wavy(SpatialAnimation):
                 self.direction_elapsed = 0.0
                 self.direction_duration = self.generator.uniform(*self.DIRECTION_DRIFT_RANGE)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta_seconds):
         self._advance_direction(delta_seconds)
         projections = [

@@ -9,6 +9,7 @@ class CometTrain(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Colored comets orbit the tree with independent 3D tails."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.comets = [
             (
@@ -21,6 +22,7 @@ class CometTrain(SpatialAnimation):
             for _ in range(4)
         ]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         strengths = [0.0] * self.led_count
         colors = [(0, 0, 0)] * self.led_count

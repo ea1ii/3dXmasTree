@@ -9,10 +9,12 @@ class ChromaticHelix(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "A vivid rainbow helix winds upward and rotates around the tree."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.speed = self.generator.uniform(0.08, 0.18)
         self.turns = self.generator.uniform(1.5, 3.0)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         return [
             _rgb(math.atan2(y, x) / (2 * math.pi) + z * self.turns - self.elapsed * self.speed, 1, 1)

@@ -16,6 +16,7 @@ class SpainAnimation(Animation):
     ANGULAR_SPEED_RANGE = (0.2, 1.2)
     SPEED_CHANGE_RANGE = (0.5, 2.0)
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -70,6 +71,7 @@ class SpainAnimation(Animation):
         x, y = cosine * x + sine * y, -sine * x + cosine * y
         return x, y, z
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

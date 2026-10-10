@@ -9,6 +9,7 @@ class SpringChain(SpatialAnimation):
     version = "0.1.2"
     description = "A plucked damped spring chain sends elastic waves along the LEDs."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.displacement = [0.0] * self.led_count
         self.velocity = [0.0] * self.led_count
@@ -19,6 +20,7 @@ class SpringChain(SpatialAnimation):
         self.substep = 1 / 120
         self.color = _rgb(self.generator.uniform(0.45, 0.58), 0.9, 1)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         remaining = delta
         while remaining > 0:

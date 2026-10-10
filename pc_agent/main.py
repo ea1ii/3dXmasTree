@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QSlider,
     QSplitter,
     QToolBar,
@@ -3220,6 +3221,10 @@ class MainWindow(QMainWindow):
             return False
 
     @staticmethod
+    def _is_integer_parameter(value):
+        return isinstance(value, int) and not isinstance(value, bool)
+
+    @staticmethod
     def _read_effect_parameter_sidecar(sidecar_path):
         try:
             parameters = json.loads(sidecar_path.read_text(encoding="utf-8"))
@@ -3275,8 +3280,9 @@ class MainWindow(QMainWindow):
                 self.effect_parameters_form.addRow(label, editor)
                 continue
 
-            lower_editor = self._new_effect_parameter_spin(value[0])
-            upper_editor = self._new_effect_parameter_spin(value[1])
+            integer_range = all(self._is_integer_parameter(limit) for limit in value)
+            lower_editor = self._new_effect_parameter_spin(value[0], integer_range)
+            upper_editor = self._new_effect_parameter_spin(value[1], integer_range)
 
             def save_range(_new_value, path=sidecar_path, key=name, lower=lower_editor, upper=upper_editor):
                 lower_value, upper_value = sorted((lower.value(), upper.value()))
@@ -3297,14 +3303,19 @@ class MainWindow(QMainWindow):
             self.effect_parameters_form.addRow("to", upper_editor)
 
     @staticmethod
-    def _new_effect_parameter_spin(value):
-        editor = QDoubleSpinBox()
+    def _new_effect_parameter_spin(value, integer=None):
+        if integer is None:
+            integer = MainWindow._is_integer_parameter(value)
+        editor = QSpinBox() if integer else QDoubleSpinBox()
         editor.setRange(-1_000_000, 1_000_000)
         editor.setMaximumWidth(110)
-        editor.setDecimals(2)
-        editor.setSingleStep(0.01)
+        if integer:
+            editor.setSingleStep(1)
+        else:
+            editor.setDecimals(2)
+            editor.setSingleStep(0.01)
         editor.setKeyboardTracking(False)
-        editor.setValue(float(value))
+        editor.setValue(int(value) if integer else float(value))
         return editor
 
     def _save_effect_parameter(self, sidecar_path, name, value):

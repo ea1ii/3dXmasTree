@@ -9,6 +9,7 @@ class ElasticCollision(SpatialAnimation):
     version = "0.1.2"
     description = "Luminous spheres exchange momentum in elastic 3D collisions."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.radius = max(self.tree_radius * 0.32, self.height * 0.1, 0.05)
         self.boundary = max(self.tree_radius * 0.92, self.height * 0.42, 0.12)
@@ -22,6 +23,7 @@ class ElasticCollision(SpatialAnimation):
             velocity = [self.generator.uniform(-1.4, 1.4), self.generator.uniform(-1.4, 1.4), self.generator.uniform(-1.2, 1.2)]
             self.balls.append({"position": position, "velocity": velocity, "color": _rgb(index / self.ball_count, 0.88, 1)})
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         for ball in self.balls:
             for axis in range(3):

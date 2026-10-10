@@ -9,6 +9,7 @@ class Boiling(SpatialAnimation):
     version = "0.1.5"
     description = "Heat bubbles rise along the tree's LED branches and burst at the crown."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.neighbors = []
         for index, point in enumerate(self.positions):
@@ -76,6 +77,7 @@ class Boiling(SpatialAnimation):
             self.temperature[index] = 1.0
             self.pop_brightness[index] = 1.0
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         remaining = delta
         while remaining > 0:

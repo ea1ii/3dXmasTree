@@ -11,9 +11,11 @@ class SunriseLayers(SpatialAnimation):
 
     CYCLE_SECONDS = 24.0
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         pass
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         progress = (self.elapsed % self.CYCLE_SECONDS) / self.CYCLE_SECONDS
         warm_front = min(1.0, progress * 1.35)

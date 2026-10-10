@@ -9,6 +9,7 @@ class Rocket(SpatialAnimation):
     version = "0.1.0"
     description = "A full-brightness cone of color rises through the tree and slowly fades."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self._launch()
 
@@ -36,6 +37,7 @@ class Rocket(SpatialAnimation):
         self.fade_elapsed += remaining
         self.fade_front_z = min(self.height, self.fade_elapsed * self.fade_speed)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta_seconds):
         self._advance_rocket(delta_seconds)
         frame = []

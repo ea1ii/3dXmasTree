@@ -9,6 +9,7 @@ class Pendulum(SpatialAnimation):
     version = "0.1.2"
     description = "A bright beam swings through the tree like a weighted pendulum."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.amplitude = self.generator.uniform(0.55, 0.95)
         self.rate = self.generator.uniform(0.35, 0.65)
@@ -17,6 +18,7 @@ class Pendulum(SpatialAnimation):
         self.width = max(self.tree_radius * 0.4, 0.08)
         self.bob_radius = max(self.tree_radius * 0.24, 0.05)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         angle = self.amplitude * math.sin(self.elapsed * self.rate + self.phase)
         end = (self.tree_radius * math.sin(angle), 0.0, self.height * (0.58 + 0.32 * math.cos(angle)))

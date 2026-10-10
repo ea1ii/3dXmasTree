@@ -20,6 +20,7 @@ class ClassicFadeAnimation(Animation):
     MIN_CYCLE_SECONDS = 0.5
     MAX_CYCLE_SECONDS = 2.0
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -46,6 +47,7 @@ class ClassicFadeAnimation(Animation):
         ]
         self.running = True
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

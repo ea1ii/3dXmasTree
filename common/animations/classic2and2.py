@@ -19,6 +19,7 @@ class Classic2And2Animation(Animation):
     SWITCH_INTERVAL_RANGE = (0.5, 3.0)
     CROSSFADE_DURATION_RANGE = (0.15, 0.45)
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -70,6 +71,7 @@ class Classic2And2Animation(Animation):
             for start, end in zip(first, second)
         )
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

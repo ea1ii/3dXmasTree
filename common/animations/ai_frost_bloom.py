@@ -9,6 +9,7 @@ class FrostBloom(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Cold-white branches spread from the base and retreat like growing frost."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.cycle = self.generator.uniform(7.0, 11.0)
         self.branch_angles = [
@@ -16,6 +17,7 @@ class FrostBloom(SpatialAnimation):
             for index in range(9)
         ]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         progress = (self.elapsed % self.cycle) / self.cycle
         growth = 1 - abs(2 * progress - 1)

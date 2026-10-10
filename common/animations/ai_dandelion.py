@@ -9,6 +9,7 @@ class Dandelion(SpatialAnimation):
     version = "0.1.2"
     description = "Tiny colored seeds drift outward from a glowing center."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.center = (0.0, 0.0, self.height * 0.5)
         self.seeds = [
@@ -23,6 +24,7 @@ class Dandelion(SpatialAnimation):
             for _ in range(144)
         ]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = [(0, 0, 0)] * self.led_count
         for dx, dy, dz, speed, color, phase in self.seeds:

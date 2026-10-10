@@ -18,6 +18,7 @@ class SingleSliceAnimation(Animation):
     ROTATION_CHANGE_RANGE = (0.4, 1.5)
     HUE_CHANGE_RANGE = (2.0, 6.0)
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -107,6 +108,7 @@ class SingleSliceAnimation(Animation):
                 self.move_direction = 1.0
             self.translation_duration = self.generator.uniform(*self.TRANSLATION_DURATION_RANGE)
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

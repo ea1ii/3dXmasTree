@@ -9,10 +9,12 @@ class CandyCaneChase(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Red and white diagonal stripes spiral and chase up the tree."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.speed = self.generator.uniform(0.16, 0.32)
         self.twist = self.generator.uniform(2.5, 4.5)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for x, y, z in self.positions:

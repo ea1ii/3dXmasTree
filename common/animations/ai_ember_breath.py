@@ -9,11 +9,13 @@ class EmberBreath(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Uneven red-orange embers breathe at different speeds."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.phases = [self.generator.random() for _ in self.positions]
         self.rates = [self.generator.uniform(0.06, 0.2) for _ in self.positions]
         self.hues = [self.generator.uniform(0.005, 0.095) for _ in self.positions]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for phase, rate, hue in zip(self.phases, self.rates, self.hues):

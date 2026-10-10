@@ -8,12 +8,14 @@ class BraidedTwins(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Two colored climbing trails weave around each other."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.turns = self.generator.uniform(2.0, 3.5)
         self.rate = self.generator.uniform(0.12, 0.25)
         self.width = max(self.tree_radius * 0.14, 0.035)
         self.colors = (_rgb(0.99, 0.9, 1), _rgb(0.56, 0.9, 1))
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for x, y, z in self.positions:

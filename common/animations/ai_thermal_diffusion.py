@@ -9,6 +9,7 @@ class ThermalDiffusion(SpatialAnimation):
     version = "0.1.1"
     description = "Hot spots spread through neighboring LEDs and cool by diffusion."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.neighbors = []
         for index, point in enumerate(self.positions):
@@ -29,6 +30,7 @@ class ThermalDiffusion(SpatialAnimation):
     def _add_heat_source(self):
         self.sources.append((self.generator.randrange(self.led_count), self.generator.uniform(0.7, 1.0), self.generator.uniform(2.0, 4.0)))
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         self.source_timer -= delta
         if self.source_timer <= 0:

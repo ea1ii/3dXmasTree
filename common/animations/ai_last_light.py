@@ -10,6 +10,7 @@ class LastLight(SpatialAnimation):
     COLLAPSE_DURATION_RANGE = (5.0, 8.0)
     RETURN_DURATION_RANGE = (3.0, 5.0)
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.center = (0.0, 0.0, self.height * 0.5)
         self.radii = [math.sqrt(x * x + y * y + (z - self.center[2]) ** 2) for x, y, z in self.positions]
@@ -21,6 +22,7 @@ class LastLight(SpatialAnimation):
         self.phase_duration = self.generator.uniform(*self.COLLAPSE_DURATION_RANGE)
         self.color = _rgb(self.generator.random(), 0.85, 1)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         self.phase_elapsed += delta
         if self.phase_elapsed >= self.phase_duration:

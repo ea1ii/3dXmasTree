@@ -10,6 +10,7 @@ class GrandFinale(SpatialAnimation):
     description = "A staged build of waves, bursts, and a sustained all-tree finale."
     duration_seconds = 36.0
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.color = _rgb(self.generator.uniform(0.0, 1.0), 0.85, 1)
         self.center = (
@@ -19,6 +20,7 @@ class GrandFinale(SpatialAnimation):
         )
         self.max_distance = max(_distance(point, self.center) for point in self.positions)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         if self.elapsed >= self.duration_seconds * 0.82:
             return [(255, 255, 255)] * self.led_count

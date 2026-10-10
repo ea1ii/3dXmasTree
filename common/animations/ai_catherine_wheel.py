@@ -8,12 +8,14 @@ class CatherineWheel(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Rotating colored spokes flare out from the tree's center."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.spokes = self.generator.randint(5, 9)
         self.phase = self.generator.random() * 2 * math.pi
         self.rate = self.generator.uniform(0.2, 0.55)
         self.colors = [_rgb(self.generator.random(), 0.92, 1) for _ in range(self.spokes)]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         rotation = self.elapsed * self.rate + self.phase
         frame = []

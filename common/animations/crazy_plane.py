@@ -17,6 +17,7 @@ class CrazyPlaneAnimation(Animation):
     ROTATION_CHANGE_RANGE = (0.25, 0.75)
     HUE_TRANSITION_RANGE = (2.0, 5.0)
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -111,6 +112,7 @@ class CrazyPlaneAnimation(Animation):
         magnitude = math.sqrt(x * x + y * y + z * z)
         return x / magnitude, y / magnitude, z / magnitude
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

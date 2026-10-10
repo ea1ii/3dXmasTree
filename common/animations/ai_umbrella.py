@@ -11,6 +11,7 @@ class Umbrella(SpatialAnimation):
     EDGE_WIDTH = 0.12
     OPENING_EXTENT = 3.5
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.virtual_vertex_z = self.height
         profile_window = max(self.virtual_vertex_z * 0.05, 1e-6)
@@ -69,6 +70,7 @@ class Umbrella(SpatialAnimation):
         value = min(1.0, max(0.0, value))
         return value * value * (3.0 - 2.0 * value)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta_seconds):
         self._advance_canopy(delta_seconds)
         frame = []

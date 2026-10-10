@@ -17,6 +17,7 @@ class SnowAnimation(Animation):
     BLOB_HEIGHT_RANGE = (0.008, 0.12)
     FALL_SPEED_RANGE = (0.12, 0.35)
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -70,6 +71,7 @@ class SnowAnimation(Animation):
             "speed": self.height * self.generator.uniform(*self.FALL_SPEED_RANGE),
         }
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

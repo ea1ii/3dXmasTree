@@ -9,12 +9,14 @@ class Eclipse(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "A dark 3D eclipse travels across a dim blue-violet star field."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.radius = max(self.tree_radius * 0.58, 0.1)
         self.halo_width = max(self.tree_radius * 0.24, 0.04)
         self.phase = self.generator.random() * 2 * math.pi
         self.speed = self.generator.uniform(0.12, 0.22)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         center = (
             self.tree_radius * 0.55 * math.sin(self.elapsed * self.speed + self.phase),

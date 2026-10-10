@@ -19,6 +19,7 @@ class SnakeAnimation(Animation):
     FLASH_COUNT = 2
     FLASH_HALF_PERIOD_SECONDS = 0.14
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -118,6 +119,7 @@ class SnakeAnimation(Animation):
         if all(level >= self.FULL_TREE_THRESHOLD for level in self.trail_levels):
             self._start_explosion()
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

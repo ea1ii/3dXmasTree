@@ -24,6 +24,7 @@ class MeteorsAnimation(Animation):
         (42, 112, 255),
     )
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -115,6 +116,7 @@ class MeteorsAnimation(Animation):
                 active_meteors.append(meteor)
         self.meteors = active_meteors
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

@@ -8,12 +8,14 @@ class ColorElevator(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Colored horizontal bands rise through the tree at different rates."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.bands = [
             (self.generator.random(), self.generator.uniform(0.12, 0.32), _rgb(self.generator.random(), 0.9, 1))
             for _ in range(5)
         ]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for _x, _y, z in self.positions:

@@ -9,11 +9,13 @@ class Constellation(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Sparse blue-white stars twinkle independently across the tree."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.phases = [self.generator.random() for _ in self.positions]
         self.rates = [self.generator.uniform(0.05, 0.22) for _ in self.positions]
         self.thresholds = [self.generator.uniform(0.72, 0.94) for _ in self.positions]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for phase, rate, threshold in zip(self.phases, self.rates, self.thresholds):

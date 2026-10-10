@@ -9,6 +9,7 @@ class DropCoalescence(SpatialAnimation):
     version = "0.1.3"
     description = "Distinct droplets merge, fall, rebound, and send ripples across the base."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.gravity = 3.2 * self.height
         self.drag = 0.08
@@ -63,6 +64,7 @@ class DropCoalescence(SpatialAnimation):
             first["position"][axis] -= normal[axis] * overlap * inverse_first / (inverse_first + inverse_second)
             second["position"][axis] += normal[axis] * overlap * inverse_second / (inverse_first + inverse_second)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         step_count = max(1, min(8, math.ceil(delta / 0.025)))
         step = delta / step_count

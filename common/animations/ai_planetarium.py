@@ -9,6 +9,7 @@ class Planetarium(SpatialAnimation):
     version = "0.1.1"
     description = "Small colored planets orbit amid a dim field of twinkling stars."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.stars = [self.generator.random() for _ in self.positions]
         self.planets = [
@@ -16,6 +17,7 @@ class Planetarium(SpatialAnimation):
             for _ in range(10)
         ]
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for index, point in enumerate(self.positions):

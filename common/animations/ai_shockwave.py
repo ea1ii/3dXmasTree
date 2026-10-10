@@ -9,6 +9,7 @@ class Shockwave(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "A bright spherical shell expands from random points through the tree."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.cycle = 0.0
         self.duration = self.generator.uniform(3.0, 6.0)
@@ -23,6 +24,7 @@ class Shockwave(SpatialAnimation):
         self.max_distance = max(_distance(point, self.center) for point in self.positions)
         self.color = _rgb(self.generator.random(), 0.92, 1)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         self.cycle += delta
         if self.cycle >= self.duration:

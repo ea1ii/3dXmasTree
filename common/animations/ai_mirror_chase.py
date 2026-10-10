@@ -9,11 +9,13 @@ class MirrorChase(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Paired light waves race toward each other from opposite tree halves."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.period = self.generator.uniform(3.0, 5.0)
         self.phase = self.generator.random()
         self.colors = (_rgb(0.0, 1, 1), _rgb(0.57, 0.9, 1))
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         phase = (self.elapsed / self.period + self.phase) % 1.0
         left_front = phase

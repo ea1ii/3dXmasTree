@@ -18,6 +18,7 @@ class ClassicIceAnimation(Animation):
     FLASH_DURATION_RANGE = (0.1, 5.0)
     FLASH_RISE_FRACTION = 0.15
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -39,6 +40,7 @@ class ClassicIceAnimation(Animation):
             self.flash_delay.append(self.generator.uniform(0.0, period))
         self.running = True
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

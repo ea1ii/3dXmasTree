@@ -9,6 +9,7 @@ class GyroscopicPrecession(SpatialAnimation):
     version = "0.1.2"
     description = "A spinning rotor precesses under torque and slowly changes nutation."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.spin = self.generator.uniform(8.0, 15.0)
         self.mass = self.generator.uniform(0.6, 1.4)
@@ -24,6 +25,7 @@ class GyroscopicPrecession(SpatialAnimation):
         self.rotor_width = max(self.tree_radius * 0.12, 0.03)
         self.color = _rgb(self.generator.uniform(0.52, 0.68), 0.85, 1)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         precession = self.precession_phase + self.elapsed * self.precession_rate
         tilt = 0.45 + self.nutation * math.sin(self.elapsed * self.nutation_rate)

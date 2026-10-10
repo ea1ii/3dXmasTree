@@ -8,11 +8,13 @@ class DiamondLattice(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Rotating diagonal light lines form a colorful 3D diamond lattice."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.rotation = self.generator.random() * 2 * math.pi
         self.speed = self.generator.uniform(0.04, 0.12)
         self.density = self.generator.uniform(3.0, 5.5)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         rotation = self.rotation + self.elapsed * self.speed
         frame = []

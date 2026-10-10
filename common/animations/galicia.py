@@ -1,4 +1,3 @@
-import json
 import math
 import random
 from collections.abc import Mapping
@@ -21,6 +20,7 @@ class GaliciaAnimation(Animation):
     }
     PARAMETER_SIDECAR = Path(__file__).with_suffix(".json")
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -29,7 +29,7 @@ class GaliciaAnimation(Animation):
         if led_count < 1:
             raise ValueError("led_count must be positive")
 
-        effect_parameters = self._load_effect_parameters(parameters)
+        effect_parameters = self._load_effect_parameters(parameters, self.name)
         self.sweep_duration_range = effect_parameters["sweep_duration_range"]
         self.led_count = led_count
         self.generator = random.Random()
@@ -50,24 +50,13 @@ class GaliciaAnimation(Animation):
         self.running = True
 
     @classmethod
-    def _load_effect_parameters(cls, parameters):
-        if not isinstance(parameters, Mapping):
-            raise ValueError("parameters must be a mapping")
-        try:
-            sidecar_parameters = json.loads(
-                cls.PARAMETER_SIDECAR.read_text(encoding="utf-8")
-            )
-        except FileNotFoundError:
-            sidecar_parameters = {}
-        except json.JSONDecodeError as error:
-            raise ValueError(f"Invalid galicia parameter sidecar: {error}") from error
-        if not isinstance(sidecar_parameters, dict):
-            raise ValueError("galicia parameter sidecar must contain a JSON object")
-
-        overrides = parameters.get("galicia", {})
-        if not isinstance(overrides, Mapping):
-            raise ValueError("parameters['galicia'] must be a mapping")
-        configured = {**cls.PARAMETER_DEFAULTS, **sidecar_parameters, **overrides}
+    def _load_effect_parameters(cls, parameters, effect_name):
+        configured = super()._load_effect_parameters(
+            parameters,
+            effect_name,
+            cls.PARAMETER_DEFAULTS,
+            cls.PARAMETER_SIDECAR,
+        )
         sweep_duration_range = cls._read_range(
             configured["sweep_duration_range"],
             "sweep_duration_range",
@@ -105,6 +94,7 @@ class GaliciaAnimation(Animation):
         self.sweep_duration = self.generator.uniform(*self.sweep_duration_range)
         self.sweep_elapsed = 0.0
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

@@ -9,6 +9,7 @@ class TideClock(SpatialAnimation):
     version = "0.1.1"
     description = "A rotating day-night terminator divides warm and cool halves."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.angle = self.generator.uniform(0, 2 * math.pi)
         self.speed = self.generator.choice((-1, 1)) * self.generator.uniform(0.5, 0.95)
@@ -16,6 +17,7 @@ class TideClock(SpatialAnimation):
         self.night = (20, 65, 190)
         self.edge = (220, 245, 255)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         angle = self.angle + self.elapsed * self.speed
         nx, ny = math.cos(angle), math.sin(angle)

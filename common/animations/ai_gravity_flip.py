@@ -8,12 +8,14 @@ class GravityFlip(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Color bands stream up or down as gravity repeatedly reverses."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.direction = self.generator.choice((-1.0, 1.0))
         self.flip_remaining = self.generator.uniform(2.0, 5.0)
         self.speed = self.generator.uniform(0.18, 0.35)
         self.hue = self.generator.random()
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         self.flip_remaining -= delta
         if self.flip_remaining <= 0:

@@ -9,10 +9,12 @@ class AuroraCurtain(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Green, turquoise, and violet curtains ripple through 3D space."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.phase = self.generator.uniform(0, 2 * math.pi)
         self.speed = self.generator.uniform(0.15, 0.3)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for x, y, z in self.positions:

@@ -9,6 +9,7 @@ class BouncingMass(SpatialAnimation):
     version = "0.1.2"
     description = "A gravity-driven luminous mass bounces with diminishing restitution."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.radius = max(self.tree_radius * 0.78, self.height * 0.2, 0.1)
         self.gravity = 2.8 * self.height
@@ -18,6 +19,7 @@ class BouncingMass(SpatialAnimation):
         self.color = _rgb(self.generator.uniform(0.04, 0.15), 0.9, 1)
         self.substep = 1 / 120
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         remaining = delta
         while remaining > 0:

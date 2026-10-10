@@ -22,6 +22,7 @@ class LaserAnimation(Animation):
     ORIGIN_DRIFT_RANGE = (6.0, 12.0)
     COLOR_CYCLE_RANGE = (1.5, 2.5)
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -90,6 +91,7 @@ class LaserAnimation(Animation):
             for start, end in zip(first, second)
         )
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

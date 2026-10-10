@@ -10,6 +10,7 @@ class BlinkAnimation(Animation):
     version = "0.1.0"
     description = "Blink all LEDs on and off at configurable intervals."
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -38,6 +39,7 @@ class BlinkAnimation(Animation):
         self.elapsed_seconds = 0.0
         self.running = True
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count

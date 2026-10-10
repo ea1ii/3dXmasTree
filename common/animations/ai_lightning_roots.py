@@ -9,6 +9,7 @@ class LightningRoots(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Branching blue-white lightning bolts crackle up from the roots."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.remaining = 0.0
         self.next_bolt = 0.0
@@ -34,6 +35,7 @@ class LightningRoots(SpatialAnimation):
         self.remaining = self.flash_duration
         self.next_bolt = self.generator.uniform(1.2, 4.5)
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         self.remaining = max(0.0, self.remaining - delta)
         if self.remaining == 0:

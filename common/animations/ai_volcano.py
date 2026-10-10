@@ -9,6 +9,7 @@ class Volcano(SpatialAnimation):
     version = "0.1.1"
     description = "Warm eruptions launch colored sparks from the tree base."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.particle_count = 48
         self.particles = [self._new_particle() for _ in range(self.particle_count)]
@@ -25,6 +26,7 @@ class Volcano(SpatialAnimation):
             "color": _rgb(self.generator.uniform(0.01, 0.13), 1, 1),
         }
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, delta):
         frame = [0.0] * self.led_count
         width = max(self.tree_radius * 0.2, 0.045)

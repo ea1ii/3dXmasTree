@@ -8,6 +8,7 @@ class RibbonKnot(SpatialAnimation):
     author = "Carlos Gil & AI"
     description = "Two bright colored ribbons braid around the tree in a moving knot."
 
+    # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
         self.turns = self.generator.uniform(1.5, 2.8)
         self.speed = self.generator.uniform(0.1, 0.2)
@@ -15,6 +16,7 @@ class RibbonKnot(SpatialAnimation):
         self.phase = self.generator.random() * 2 * math.pi
         self.colors = (_rgb(0.9, 0.95, 1), _rgb(0.53, 0.9, 1))
 
+    # Overrides SpatialAnimation._render_frame.
     def _render_frame(self, _delta):
         frame = []
         for x, y, z in self.positions:

@@ -1,5 +1,4 @@
 import colorsys
-import json
 import math
 import random
 from collections.abc import Mapping
@@ -24,6 +23,7 @@ class HorizontalSliceAnimation(Animation):
     }
     PARAMETER_SIDECAR = Path(__file__).with_suffix(".json")
 
+    # Overrides Animation.initialise.
     def initialise(
         self,
         led_count: int,
@@ -32,11 +32,12 @@ class HorizontalSliceAnimation(Animation):
         if led_count < 1:
             raise ValueError("led_count must be positive")
 
-        effect_parameters = self._load_effect_parameters(parameters)
+        effect_parameters = self._load_effect_parameters(parameters, self.name)
         self.hue_separation_range = effect_parameters["hue_separation_range"]
         self.half_sweep_seconds_range = effect_parameters["half_sweep_seconds_range"]
         self.saturation = effect_parameters["saturation"]
         self.value = effect_parameters["value"]
+        
         self.led_count = led_count
         self.generator = random.Random()
         self.positions = self._read_positions(parameters.get("positions"), led_count)
@@ -58,24 +59,13 @@ class HorizontalSliceAnimation(Animation):
         self.running = True
 
     @classmethod
-    def _load_effect_parameters(cls, parameters):
-        if not isinstance(parameters, Mapping):
-            raise ValueError("parameters must be a mapping")
-        try:
-            sidecar_parameters = json.loads(
-                cls.PARAMETER_SIDECAR.read_text(encoding="utf-8")
-            )
-        except FileNotFoundError:
-            sidecar_parameters = {}
-        except json.JSONDecodeError as error:
-            raise ValueError(f"Invalid hslice parameter sidecar: {error}") from error
-        if not isinstance(sidecar_parameters, dict):
-            raise ValueError("hslice parameter sidecar must contain a JSON object")
-
-        overrides = parameters.get("hslice", {})
-        if not isinstance(overrides, Mapping):
-            raise ValueError("parameters['hslice'] must be a mapping")
-        configured = {**cls.PARAMETER_DEFAULTS, **sidecar_parameters, **overrides}
+    def _load_effect_parameters(cls, parameters, effect_name):
+        configured = super()._load_effect_parameters(
+            parameters,
+            effect_name,
+            cls.PARAMETER_DEFAULTS,
+            cls.PARAMETER_SIDECAR,
+        )
 
         hue_separation_range = cls._read_range(
             configured["hue_separation_range"],
@@ -101,6 +91,7 @@ class HorizontalSliceAnimation(Animation):
         }
         cls._persist_effect_parameters(effective_parameters)
         return effective_parameters
+
     def _contrasting_hue(self, reference_hue):
         separation = self.generator.uniform(*self.hue_separation_range)
         direction = self.generator.choice((-1.0, 1.0))
@@ -137,6 +128,7 @@ class HorizontalSliceAnimation(Animation):
             remaining -= time_to_boundary
             self._bounce()
 
+    # Overrides Animation.doframe.
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:
             return [(0, 0, 0)] * self.led_count
