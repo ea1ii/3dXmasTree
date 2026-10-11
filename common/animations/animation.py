@@ -25,6 +25,22 @@ class Animation(ABC):
     # Reads a numeric range from the raw value, ensuring it falls within the specified bounds.
     @staticmethod
     def _read_range(raw_value, name, lower_bound, upper_bound, minimum_exclusive=False):
+        """
+        Reads a numeric range from the raw value, ensuring it falls within the specified bounds.
+
+        Args:
+            raw_value: The raw input value to read.
+            name: The name of the parameter (for error messages).
+            lower_bound: The minimum allowed value.
+            upper_bound: The maximum allowed value.
+            minimum_exclusive: Whether the minimum value is exclusive.
+
+        Returns:
+            A tuple containing the validated minimum and maximum values.
+
+        Raises:
+            ValueError: If the raw value is not a valid range.
+        """
         if (
             not isinstance(raw_value, Sequence)
             or isinstance(raw_value, (str, bytes))
@@ -46,6 +62,19 @@ class Animation(ABC):
     # Reads a unit interval (0 to 1) from the raw value, ensuring it is valid.
     @staticmethod
     def _read_unit_interval(raw_value, name):
+        """
+        Reads a unit interval (0 to 1) from the raw value, ensuring it is valid.
+
+        Args:
+            raw_value: The raw input value to read.
+            name: The name of the parameter (for error messages).
+
+        Returns:
+            The validated unit interval value.
+
+        Raises:
+            ValueError: If the raw value is not a valid unit interval.
+        """
         if isinstance(raw_value, bool):
             raise ValueError(f"{name} must be between 0 and 1")
         value = float(raw_value)
@@ -56,6 +85,21 @@ class Animation(ABC):
     # Loads the effect parameters, combining defaults, sidecar, and overrides.
     @classmethod
     def _load_effect_parameters(cls, parameters, effect_name, defaults, sidecar_path):
+        """
+        Loads the effect parameters, combining defaults, sidecar, and overrides.
+
+        Args:
+            parameters: The raw input parameters mapping.
+            effect_name: The name of the effect to load parameters for.
+            defaults: The default parameter values.
+            sidecar_path: The path to the sidecar JSON file containing additional parameters.
+
+        Returns:
+            A dictionary containing the combined effect parameters.
+
+        Raises:
+            ValueError: If any of the input values are invalid.
+        """
         if not isinstance(parameters, Mapping):
             raise ValueError("parameters must be a mapping")
         try:
@@ -75,6 +119,15 @@ class Animation(ABC):
     # Persists the effect parameters to a sidecar JSON file, ensuring atomic writes.
     @classmethod
     def _persist_effect_parameters(cls, parameters):
+        """
+        Persists the effect parameters to a sidecar JSON file, ensuring atomic writes.
+
+        Args:
+            parameters: The effect parameters to persist.
+
+        Raises:
+            ValueError: If the parameters cannot be persisted due to invalid JSON or file errors.
+        """
         sidecar_path = cls.PARAMETER_SIDECAR
         json_parameters = json.loads(json.dumps(parameters))
         try:
@@ -104,6 +157,16 @@ class Animation(ABC):
     # Reads the LED positions from the raw value, falling back to a default layout if necessary.
     @classmethod
     def _read_positions(cls, raw_positions, led_count):
+        """
+        Reads the LED positions from the raw value, falling back to a default layout if necessary.
+
+        Args:
+            raw_positions: The raw input positions to read.
+            led_count: The number of LEDs to read positions for.
+
+        Returns:
+            A list of 3D positions for each LED.
+        """
         if isinstance(raw_positions, Sequence) and len(raw_positions) == led_count:
             try:
                 positions = [
@@ -123,6 +186,15 @@ class Animation(ABC):
 
     @staticmethod
     def _fallback_positions(led_count):
+        """
+        Generates a default layout of LED positions in 3D space.
+
+        Args:
+            led_count: The number of LEDs to generate positions for.
+
+        Returns:
+            A list of 3D positions for each LED.
+        """
         positions = []
         for index in range(led_count):
             height = index / max(1, led_count - 1)
@@ -133,6 +205,15 @@ class Animation(ABC):
     
     # Estimates the average spacing between LEDs, using a fallback if necessary.
     def _estimate_led_spacing(self, fallback=None):
+        """
+        Estimates the average spacing between LEDs, using a fallback if necessary.
+
+        Args:
+            fallback: The fallback spacing to use if the average cannot be computed.
+
+        Returns:
+            The estimated average spacing between LEDs.
+        """
         if fallback is None:
             fallback = self.height / 10
         if len(self.positions) < 2:
@@ -149,7 +230,17 @@ class Animation(ABC):
         self,
         led_count: int,
         parameters: Mapping[str, object],
-    ) -> None:
+) -> None:
+        """
+        Initializes the shared animation state before dispatching to the effect hook.
+
+        Args:
+            led_count: The number of LEDs in the animation.
+            parameters: The effect-specific parameters.
+
+        Raises:
+            ValueError: If led_count is not positive.
+        """
         if led_count < 1:
             raise ValueError("led_count must be positive")
         self.led_count = led_count

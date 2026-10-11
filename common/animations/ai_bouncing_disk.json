@@ -1,0 +1,7 @@
+{
+    "mass_range": [0.6, 1.8],
+    "gravity_range": [1.3, 2.7],
+    "invisible_force_range": [2.5, 5.0],
+    "restitution_range": [0.65, 0.85],
+    "bounce_threshold_range": [0.025, 0.06]
+}

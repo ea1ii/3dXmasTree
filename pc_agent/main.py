@@ -94,6 +94,8 @@ class OrthographicRotationFilter(QObject):
         normalized_x = x / width
         normalized_y = 1.0 - y / height
         for name, renderer in self.view_renderers.items():
+            if not renderer.GetDraw():
+                continue
             x_min, y_min, x_max, y_max = renderer.GetViewport()
             if x_min <= normalized_x <= x_max and y_min <= normalized_y <= y_max:
                 return name
@@ -261,6 +263,7 @@ class ViewportSplitControls(QObject):
         self.renderers = renderers
         self.split_x = 0.5
         self.split_top = 0.5
+        self.maximized_view = None
         self.vertical_handle = ViewportDividerHandle(
             Qt.Orientation.Vertical,
             plotter,
@@ -289,6 +292,7 @@ class ViewportSplitControls(QObject):
 
         mouse_events = (
             QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonDblClick,
             QEvent.Type.MouseMove,
             QEvent.Type.MouseButtonRelease,
         )
@@ -298,7 +302,19 @@ class ViewportSplitControls(QObject):
         point = event.position().toPoint()
         if watched is not self.plotter:
             point = watched.mapTo(self.plotter, point)
-        if event_type == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+        if event_type == QEvent.Type.MouseButtonDblClick:
+            if event.button() != Qt.MouseButton.LeftButton or self._near_divider(point):
+                return super().eventFilter(watched, event)
+            view_name = self._view_name_at(point)
+            if view_name is None:
+                return super().eventFilter(watched, event)
+            self.toggle_maximized(view_name)
+            return True
+        elif (
+            event_type == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+            and self.maximized_view is None
+        ):
             self.drag_axes.clear()
             vertical_x = self.split_x * self.plotter.width()
             horizontal_y = self.split_top * self.plotter.height()
@@ -371,6 +387,10 @@ class ViewportSplitControls(QObject):
         self._apply_split()
 
     def _position_handles(self):
+        if self.maximized_view is not None:
+            self.vertical_handle.hide()
+            self.horizontal_handle.hide()
+            return
         width = self.plotter.width()
         height = self.plotter.height()
         half_handle = self.HANDLE_SIZE // 2
@@ -385,14 +405,58 @@ class ViewportSplitControls(QObject):
 
     def _apply_split(self):
         split_y = 1.0 - self.split_top
-        self.renderers["Front"].SetViewport(0.0, split_y, self.split_x, 1.0)
-        self.renderers["Right"].SetViewport(self.split_x, split_y, 1.0, 1.0)
-        self.renderers["Top"].SetViewport(0.0, 0.0, self.split_x, split_y)
-        self.renderers["Iso"].SetViewport(self.split_x, 0.0, 1.0, split_y)
+        viewports = {
+            "Front": (0.0, split_y, self.split_x, 1.0),
+            "Right": (self.split_x, split_y, 1.0, 1.0),
+            "Top": (0.0, 0.0, self.split_x, split_y),
+            "Iso": (self.split_x, 0.0, 1.0, split_y),
+        }
+        if self.maximized_view is not None:
+            viewports[self.maximized_view] = (0.0, 0.0, 1.0, 1.0)
+        for name, viewport in viewports.items():
+            self.renderers[name].SetViewport(*viewport)
         self._position_handles()
         for renderer in self.renderers.values():
             renderer.ResetCameraClippingRange()
         self.plotter.render()
+
+    def is_view_visible(self, view_name):
+        return self.maximized_view in (None, view_name)
+
+    def _near_divider(self, point):
+        if self.maximized_view is not None:
+            return False
+        return (
+            abs(point.x() - self.split_x * self.plotter.width()) <= self.DRAG_HIT_SLOP
+            or abs(point.y() - self.split_top * self.plotter.height()) <= self.DRAG_HIT_SLOP
+        )
+
+    def _view_name_at(self, point):
+        x = point.x() / max(1, self.plotter.width())
+        y = 1.0 - point.y() / max(1, self.plotter.height())
+        for name, renderer in self.renderers.items():
+            if not renderer.GetDraw():
+                continue
+            x_min, y_min, x_max, y_max = renderer.GetViewport()
+            if x_min <= x <= x_max and y_min <= y <= y_max:
+                return name
+        return None
+
+    def toggle_maximized(self, view_name):
+        self.maximized_view = None if self.maximized_view is not None else view_name
+        for name, renderer in self.renderers.items():
+            shown = self.is_view_visible(name)
+            renderer.SetDraw(shown)
+            renderer.SetInteractive(shown)
+        for actor in self.divider_actors:
+            actor.SetVisibility(self.maximized_view is None)
+        self._apply_split()
+        message = (
+            "Ready"
+            if self.maximized_view is None
+            else f"{self.maximized_view} view maximized; double-click to restore"
+        )
+        self.plotter.window().statusBar().showMessage(message)
 
 
 def discover_pc_animations():
@@ -2612,6 +2676,7 @@ class MainWindow(QMainWindow):
             "Ortho: pan/zoom only\n"
             "Alt: VTK modifier\n"
             "Drag dividers to resize\n"
+            "Double-click: maximize/restore view\n"
             "Ctrl+0: reset views",
             button_panel,
         )
@@ -2963,13 +3028,12 @@ class MainWindow(QMainWindow):
                 pv.Sphere(
                     center=position,
                     radius=led_radius,
-                    theta_resolution=12,
-                    phi_resolution=10,
+                    theta_resolution=8,
+                    phi_resolution=6,
                 ),
                 color="#101B16",
-                smooth_shading=True,
+                lighting=False,
             )
-            actor.GetProperty().SetAmbient(0.45)
             self.current_led_actors.append(actor)
 
     def _select_tree_data(self):
@@ -3417,7 +3481,7 @@ class MainWindow(QMainWindow):
         self.animation_list.blockSignals(False)
         self._on_animation_selected(self.animation_list.currentItem(), None)
         if failures:
-            skipped = ", ".join(module for module, _message in failures)
+            skipped = "; ".join(f"{module} ({message})" for module, message in failures)
             self.animation_status.setText(f"Loaded {len(animations)}; skipped: {skipped}")
         else:
             self.animation_status.setText(f"{len(animations)} animation(s) loaded")
@@ -3573,9 +3637,14 @@ class MainWindow(QMainWindow):
             frame = validate_pc_animation_frame(
                 self.active_animation.doframe(delta_seconds), self.led_count
             )
-            for actors in self.led_actors_by_view:
-                for actor, color in zip(actors, frame):
-                    actor.GetProperty().SetColor(*(channel / 255 for channel in color))
+            colors = [tuple(channel / 255 for channel in color) for color in frame]
+            for (view_name, _row, _column), actors in zip(
+                self.simulation_views, self.led_actors_by_view
+            ):
+                if not self.viewport_split_controls.is_view_visible(view_name):
+                    continue
+                for actor, color in zip(actors, colors):
+                    actor.GetProperty().SetColor(*color)
             self.frame_number += 1
             self.plotter.render()
             return True
