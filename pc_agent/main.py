@@ -9,6 +9,7 @@ import pkgutil
 import sys
 import tempfile
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -2486,6 +2487,8 @@ class MainWindow(QMainWindow):
         self.active_animation = None
         self.last_frame_at = None
         self.frame_number = 0
+        self.frame_intervals = deque(maxlen=20)
+        self.performance_indicator = None
         self.animation_fps = float(self.settings.get("animation", {}).get("fps", 30.0))
         self.animation_timer = QTimer(self)
         self.animation_timer.timeout.connect(self._advance_animation_frame)
@@ -3226,9 +3229,18 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.pause_button)
         layout.addLayout(controls)
 
+        status_row = QHBoxLayout()
         self.animation_status = QLabel("Ready", panel)
         self.animation_status.setWordWrap(True)
-        layout.addWidget(self.animation_status)
+        status_row.addWidget(self.animation_status, 1)
+        self.performance_indicator = QLabel(panel)
+        self.performance_indicator.setFixedSize(12, 12)
+        self.performance_indicator.setStyleSheet(
+            "background-color: #858B87; border: 1px solid #646A66; border-radius: 6px;"
+        )
+        self.performance_indicator.setToolTip("Frame-rate status unavailable")
+        status_row.addWidget(self.performance_indicator, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(status_row)
 
         self.position_label = QLabel(
             f"{self.led_count} LEDs | "
@@ -3439,8 +3451,34 @@ class MainWindow(QMainWindow):
 
     def _set_animation_rate(self, fps):
         self.animation_fps = float(fps)
+        self._reset_animation_performance()
         if self.animation_timer.isActive():
             self.animation_timer.setInterval(max(1, round(1000 / self.animation_fps)))
+
+    def _reset_animation_performance(self):
+        self.frame_intervals.clear()
+        if self.performance_indicator is not None:
+            self.performance_indicator.setStyleSheet(
+                "background-color: #858B87; border: 1px solid #646A66; border-radius: 6px;"
+            )
+            self.performance_indicator.setToolTip("Waiting for frame-rate samples")
+
+    def _update_animation_performance(self):
+        if self.performance_indicator is None or len(self.frame_intervals) < 5:
+            return
+        interval_total = sum(self.frame_intervals)
+        if interval_total <= 0.0:
+            return
+        actual_fps = len(self.frame_intervals) / interval_total
+        keeping_up = actual_fps >= self.animation_fps * 0.9
+        color = "#35A853" if keeping_up else "#D64545"
+        state = "Keeping up" if keeping_up else "Overrunning"
+        self.performance_indicator.setStyleSheet(
+            f"background-color: {color}; border: 1px solid #454B47; border-radius: 6px;"
+        )
+        self.performance_indicator.setToolTip(
+            f"{state}: {actual_fps:.1f} FPS actual, {self.animation_fps:.1f} FPS requested"
+        )
 
     def _save_effect_duration(self, duration_seconds):
         try:
@@ -3495,6 +3533,7 @@ class MainWindow(QMainWindow):
         try:
             if not self._initialise_selected_animation():
                 return
+            self._reset_animation_performance()
             if not self._render_animation_step(0.0):
                 return
             self.last_frame_at = time.monotonic()
@@ -3510,8 +3549,10 @@ class MainWindow(QMainWindow):
         if self.animation_timer.isActive():
             self.animation_timer.stop()
             self.last_frame_at = None
+            self._reset_animation_performance()
             self.animation_status.setText("Paused")
         else:
+            self._reset_animation_performance()
             self.last_frame_at = time.monotonic()
             self.animation_timer.start(max(1, round(1000 / self.animation_fps)))
             self.animation_status.setText("Playing")
@@ -3522,6 +3563,9 @@ class MainWindow(QMainWindow):
         delta_seconds = max(0.0, now - self.last_frame_at) if self.last_frame_at else 0.0
         self.last_frame_at = now
         if self._render_animation_step(delta_seconds):
+            if delta_seconds > 0.0:
+                self.frame_intervals.append(delta_seconds)
+                self._update_animation_performance()
             self.animation_status.setText(f"Playing | frame {self.frame_number}")
 
     def _render_animation_step(self, delta_seconds):
@@ -3565,6 +3609,7 @@ class MainWindow(QMainWindow):
         self.active_animation = None
         self.last_frame_at = None
         self.frame_number = 0
+        self._reset_animation_performance()
         for actors in self.led_actors_by_view:
             for actor in actors:
                 actor.GetProperty().SetColor(0.06, 0.10, 0.08)

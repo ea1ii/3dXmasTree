@@ -1,6 +1,7 @@
 import math
 
 from common.animations.ai_base import SpatialAnimation, _distance, _rgb
+from pathlib import Path
 
 
 class Boiling(SpatialAnimation):
@@ -9,8 +10,25 @@ class Boiling(SpatialAnimation):
     version = "0.1.5"
     description = "Heat bubbles rise along the tree's LED branches and burst at the crown."
 
+    COOLING_RANGE = (0.1, 0.5)
+    DIFFUSION_RANGE = (0.1, 0.3)
+    BUBBLE_LIMIT_RANGE = (20, 40)
+    PARAMETER_DEFAULTS = {
+        "cooling": COOLING_RANGE,
+        "diffusion": DIFFUSION_RANGE,
+        "bubble_limit": BUBBLE_LIMIT_RANGE,
+    }
+
+    PARAMETER_SIDECAR = Path(__file__).with_suffix(".json")
+
     # Overrides SpatialAnimation._initialise_effect.
     def _initialise_effect(self, _parameters):
+
+        effect_parameters = self._load_effect_parameters(_parameters, self.name)
+        self.cooling_range = effect_parameters["cooling"]
+        self.diffusion_range = effect_parameters["diffusion"]
+        self.bubble_limit_range = effect_parameters["bubble_limit"]
+
         self.neighbors = []
         for index, point in enumerate(self.positions):
             nearest = sorted(
@@ -31,9 +49,9 @@ class Boiling(SpatialAnimation):
         self.pop_brightness = [0.0] * self.led_count
         self.bubbles = []
         self.substep = 1 / 60
-        self.cooling = 0.28
-        self.diffusion = 0.18
-        self.bubble_limit = 30
+        self.cooling = self.generator.uniform(*self.cooling_range)
+        self.diffusion = self.generator.uniform(*self.diffusion_range)
+        self.bubble_limit = self.generator.randint(*self.bubble_limit_range)
         bottom = [index for index, point in enumerate(self.positions) if point[2] < self.height * 0.2]
         self.heater_phases = {
             self.generator.choice(bottom): self.generator.uniform(0.0, 2 * math.pi)
@@ -48,6 +66,45 @@ class Boiling(SpatialAnimation):
             self.top_indices = [max(range(self.led_count), key=lambda index: self.positions[index][2])]
         for _ in range(10):
             self._spawn_bubble()
+
+    @classmethod
+    def _load_effect_parameters(cls, parameters, effect_name):
+        configured = super()._load_effect_parameters(
+            parameters, 
+            effect_name,
+            cls.PARAMETER_DEFAULTS,
+            cls.PARAMETER_SIDECAR,
+        )
+
+        cooling_range = cls._read_range(
+            configured["cooling_range"],
+            "cooling_range",
+            0.01,
+            1.0,
+            minimum_exclusive=False,
+        )
+        diffusion_range = cls._read_range(
+            configured["diffusion_range"],
+            "diffusion_range",
+            0.01,
+            1.0,
+            minimum_exclusive=False,
+        )
+        bubble_limit_range = cls._read_range(
+            configured["bubble_limit_range"],
+            "bubble_limit_range",
+            5,
+            50,
+            minimum_exclusive=False,   
+        )
+
+        effective_parameters = {
+            "cooling_range": cooling_range,
+            "diffusion_range": diffusion_range,
+            "bubble_limit_range": bubble_limit_range,
+        }
+        cls._persist_effect_parameters(effective_parameters)
+        return effective_parameters
 
     def _spawn_bubble(self):
         bottom = [index for index, point in enumerate(self.positions) if point[2] < self.height * 0.18]

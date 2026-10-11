@@ -1,0 +1,5 @@
+{
+    "cooling_range": [0.1, 0.5],
+    "diffusion_range": [0.1, 0.3],
+    "bubble_limit_range": [20, 40]
+}
