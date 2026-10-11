@@ -61,6 +61,7 @@ from calibration_model import (
     VIEWS as CALIBRATION_VIEWS,
     calibrate_frame_set,
     constrain_max_spacing,
+    equal_volume_cone_occupancy,
     guess_cone_fit,
     load_frame_paths,
     positions_from_detections,
@@ -1951,6 +1952,9 @@ class CalibrationPage(QDialog):
 
         self.status_label = QLabel("Detecting the brightest spot in each frame...")
         root_layout.addWidget(self.status_label)
+        self.voxel_occupancy_label = QLabel("Equal-volume voxel occupancy: awaiting positions")
+        self.voxel_occupancy_label.setWordWrap(True)
+        root_layout.addWidget(self.voxel_occupancy_label)
         footer = QHBoxLayout()
         footer.addStretch()
         self.save_button = QPushButton("Save Positions")
@@ -2106,9 +2110,23 @@ class CalibrationPage(QDialog):
     def _update_results(self):
         valid_count = sum(point["valid"] for point in self.points)
         adjusted_count = sum(point["adjusted"] for point in self.points)
+        cone_height = self.tree_height_mm * self.height_scale_spin.value()
+        base_radius = self.tree_height_mm * 0.34 * self.width_scale_spin.value()
+        occupancy = equal_volume_cone_occupancy(
+            self.points,
+            cone_height,
+            base_radius,
+        )
         self.status_label.setText(
             f"{valid_count}/{len(self.points)} points match within tolerance; "
             f"{adjusted_count} adjusted to the max spacing."
+        )
+        self.voxel_occupancy_label.setText(
+            f"Equal-volume cone voxels: {occupancy['occupied_voxels']}/"
+            f"{occupancy['total_voxels']} occupied "
+            f"({occupancy['occupancy_ratio']:.1%}); "
+            f"count CV {occupancy['count_cv']:.2f}; "
+            f"{occupancy['outside_points']} points outside cone."
         )
         self.points_table.setRowCount(len(self.points))
         for row, point in enumerate(self.points):

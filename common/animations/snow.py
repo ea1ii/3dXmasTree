@@ -17,12 +17,12 @@ class SnowAnimation(Animation):
     BLOB_HEIGHT_RANGE = (0.008, 0.12)
     FALL_SPEED_RANGE = (0.12, 0.35)
 
-    # Overrides Animation.initialise.
-    def initialise(
+    # Overrides Animation._initialise_effect.
+    def _initialise_effect(
         self,
-        led_count: int,
         parameters: Mapping[str, object],
     ) -> None:
+        led_count = self.led_count
         if led_count < 1:
             raise ValueError("led_count must be positive")
 

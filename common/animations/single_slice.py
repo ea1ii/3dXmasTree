@@ -18,12 +18,12 @@ class SingleSliceAnimation(Animation):
     ROTATION_CHANGE_RANGE = (0.4, 1.5)
     HUE_CHANGE_RANGE = (2.0, 6.0)
 
-    # Overrides Animation.initialise.
-    def initialise(
+    # Overrides Animation._initialise_effect.
+    def _initialise_effect(
         self,
-        led_count: int,
         parameters: Mapping[str, object],
     ) -> None:
+        led_count = self.led_count
         if led_count < 1:
             raise ValueError("led_count must be positive")
 

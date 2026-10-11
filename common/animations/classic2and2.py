@@ -19,12 +19,12 @@ class Classic2And2Animation(Animation):
     SWITCH_INTERVAL_RANGE = (0.5, 3.0)
     CROSSFADE_DURATION_RANGE = (0.15, 0.45)
 
-    # Overrides Animation.initialise.
-    def initialise(
+    # Overrides Animation._initialise_effect.
+    def _initialise_effect(
         self,
-        led_count: int,
         parameters: Mapping[str, object],
     ) -> None:
+        led_count = self.led_count
         if led_count < 1:
             raise ValueError("led_count must be positive")
 

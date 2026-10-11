@@ -157,6 +157,70 @@ def constrain_max_spacing(points, max_distance_mm):
     return adjusted
 
 
+def equal_volume_cone_occupancy(points, cone_height_mm, base_radius_mm):
+    if (
+        not math.isfinite(cone_height_mm)
+        or not math.isfinite(base_radius_mm)
+        or cone_height_mm <= 0
+        or base_radius_mm <= 0
+    ):
+        raise ValueError("Cone dimensions must be finite and positive")
+
+    point_count = len(points)
+    bins_per_axis = max(1, round((max(point_count, 1) / 2) ** (1 / 3)))
+    height_bins = bins_per_axis
+    radial_bins = bins_per_axis
+    angular_bins = bins_per_axis * 2
+    counts = [0] * (height_bins * radial_bins * angular_bins)
+    outside_points = 0
+
+    for point in points:
+        x, y, z = (float(point[axis]) for axis in ("x", "y", "z"))
+        height_fraction = z / cone_height_mm
+        if not all(math.isfinite(value) for value in (x, y, height_fraction)):
+            outside_points += 1
+            continue
+        if not 0.0 <= height_fraction <= 1.0:
+            outside_points += 1
+            continue
+
+        local_radius = base_radius_mm * (1.0 - height_fraction)
+        radial_distance = math.hypot(x, y)
+        if radial_distance > local_radius + base_radius_mm * 1e-9:
+            outside_points += 1
+            continue
+
+        radial_fraction = min(1.0, radial_distance / max(local_radius, 1e-9))
+        equal_volume_height = 1.0 - (1.0 - height_fraction) ** 3
+        angle_fraction = (math.atan2(y, x) / (2.0 * math.pi)) % 1.0
+        height_index = min(height_bins - 1, int(equal_volume_height * height_bins))
+        radial_index = min(radial_bins - 1, int(radial_fraction**2 * radial_bins))
+        angular_index = min(angular_bins - 1, int(angle_fraction * angular_bins))
+        voxel_index = (
+            (height_index * radial_bins + radial_index) * angular_bins
+            + angular_index
+        )
+        counts[voxel_index] += 1
+
+    total_voxels = len(counts)
+    occupied_voxels = sum(count > 0 for count in counts)
+    mean_count = sum(counts) / total_voxels
+    if mean_count:
+        variance = sum((count - mean_count) ** 2 for count in counts) / total_voxels
+        count_cv = math.sqrt(variance) / mean_count
+    else:
+        count_cv = 0.0
+
+    return {
+        "occupied_voxels": occupied_voxels,
+        "total_voxels": total_voxels,
+        "occupancy_ratio": occupied_voxels / total_voxels,
+        "count_cv": count_cv,
+        "outside_points": outside_points,
+        "voxel_shape": (height_bins, radial_bins, angular_bins),
+    }
+
+
 def guess_cone_fit(points, default_tree_height_mm):
     if not points or default_tree_height_mm <= 0:
         raise ValueError("Points and a positive default tree height are required")

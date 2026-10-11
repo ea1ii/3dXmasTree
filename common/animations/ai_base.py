@@ -44,6 +44,14 @@ class SpatialAnimation(Animation, ABC):
         raise NotImplementedError
 
     def initialise(self, led_count: int, parameters: Mapping[str, object]) -> None:
+        self._initialise_spatial_state(led_count, parameters)
+        self._initialise_effect(parameters)
+
+    def _initialise_spatial_state(
+        self,
+        led_count: int,
+        parameters: Mapping[str, object],
+    ) -> None:
         if led_count < 1:
             raise ValueError("led_count must be positive")
         self.led_count = led_count
@@ -76,7 +84,6 @@ class SpatialAnimation(Animation, ABC):
         self.tree_radius = tree_radius / self.scale
         self.elapsed = 0.0
         self.running = True
-        self._initialise_effect(parameters)
 
     def doframe(self, delta_seconds: float) -> LEDFrame:
         if not self.running:

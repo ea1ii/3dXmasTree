@@ -144,14 +144,21 @@ class Animation(ABC):
         positive_distances = [distance for distance in distances if distance > 0]
         return sum(positive_distances) / len(positive_distances) if positive_distances else fallback
 
-    # Abstract methods that must be implemented by concrete animation classes.
-    @abstractmethod
+    # Initializes shared animation state before dispatching to the effect hook.
     def initialise(
         self,
         led_count: int,
         parameters: Mapping[str, object],
     ) -> None:
-        """Prepare state for a strip of led_count LEDs."""
+        if led_count < 1:
+            raise ValueError("led_count must be positive")
+        self.led_count = led_count
+        self._initialise_effect(parameters)
+        self.running = True
+
+    @abstractmethod
+    def _initialise_effect(self, parameters: Mapping[str, object]) -> None:
+        """Initialize effect-specific state after shared setup."""
 
     # Performs any necessary cleanup when the animation is stopped.
     @abstractmethod

@@ -1,6 +1,3 @@
 {
-    "sweep_duration_range": [
-        1.5,
-        4.0
-    ]
+    "sweep_duration_range": [1.5, 4.0]
 }

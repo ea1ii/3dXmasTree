@@ -14,9 +14,13 @@ class Afterimage(SpatialAnimation):
 
     TRAVELER_COUNT = 5
     ANGULAR_SPEED_RANGE = (0.18, 0.36)
+    HEIGHT_SPEED_RANGE = (0.22, 1.5)
+    RADIUS_CENTER_RANGE = (0.58, 0.82)
+    RADIUS_SWING_RANGE = (0.1, 0.18)
     PARAMETER_DEFAULTS = {
         "traveler_count": 5,
         "angular_speed_range": (0.18, 0.36),
+        "height_speed_range": (0.22, 1.5),
     }
     PARAMETER_SIDECAR = Path(__file__).with_suffix(".json")
 
@@ -28,6 +32,7 @@ class Afterimage(SpatialAnimation):
         effect_parameters = self._load_effect_parameters(parameters, self.name)
         self.traveler_count = effect_parameters["traveler_count"]
         self.angular_speed_range = effect_parameters["angular_speed_range"]
+        self.height_speed_range = effect_parameters["height_speed_range"]
 
         self.generator = random.Random()
         self.trail = [0.0] * self.led_count
@@ -38,9 +43,9 @@ class Afterimage(SpatialAnimation):
                 "angle": self.generator.uniform(0.0, 2 * math.pi),
                 "angular_speed": self.generator.choice((-1.0, 1.0)) * self.generator.uniform(*self.angular_speed_range),
                 "height_phase": self.generator.uniform(0.0, 2 * math.pi),
-                "height_speed": self.generator.uniform(0.22, 1.5),
-                "radius_center": self.generator.uniform(0.58, 0.82),
-                "radius_swing": self.generator.uniform(0.1, 0.18),
+                "height_speed": self.generator.uniform(*self.height_speed_range),
+                "radius_center": self.generator.uniform(*self.RADIUS_CENTER_RANGE),
+                "radius_swing": self.generator.uniform(*self.RADIUS_SWING_RANGE),
             }
             for _ in range(self.traveler_count)
         ]
@@ -72,9 +77,37 @@ class Afterimage(SpatialAnimation):
             minimum_exclusive=True,
         )
 
+        height_speed_range = cls._read_range(
+            configured["height_speed_range"],
+            "height_speed_range",
+            0.05,
+            2.0,
+            minimum_exclusive=True,
+        )
+
+        radius_center_range = cls._read_range(
+            configured["radius_center_range"],
+            "radius_center_range",
+            0.58,
+            0.82,
+            minimum_exclusive=True,
+        )
+
+        radius_swing_range = cls._read_range(
+            configured["radius_swing_range"],
+            "radius_swing_range",
+            0.1,
+            0.18,
+            minimum_exclusive=True,
+        )
+
+
         effective_parameters = {
             "traveler_count": traveler_count,
             "angular_speed_range": angular_speed_range,
+            "height_speed_range": height_speed_range,
+            "radius_center_range": radius_center_range,
+            "radius_swing_range": radius_swing_range
         }
         cls._persist_effect_parameters(effective_parameters)    
         return effective_parameters

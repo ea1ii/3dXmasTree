@@ -19,12 +19,12 @@ class UkAnimation(Animation):
     EXPANSION_DURATION_RANGE = (1.5, 3.5)
     COLLAPSE_DURATION_RANGE = (0.35, 0.8)
 
-    # Overrides Animation.initialise.
-    def initialise(
+    # Overrides Animation._initialise_effect.
+    def _initialise_effect(
         self,
-        led_count: int,
         parameters: Mapping[str, object],
     ) -> None:
+        led_count = self.led_count
         if led_count < 1:
             raise ValueError("led_count must be positive")
 
