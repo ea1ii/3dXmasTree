@@ -77,11 +77,11 @@ class SpatialAnimation(Animation, ABC):
     """Shared calibrated-position handling for the bundled showcase effects."""
 
     @abstractmethod
-    def _initialise_effect(self, parameters):
+    def _initialise_effect(self, parameters, /):
         raise NotImplementedError
 
     @abstractmethod
-    def _render_frame(self, delta_seconds):
+    def _render_frame(self, delta_seconds, /):
         raise NotImplementedError
 
     def initialise(self, led_count: int, parameters: Mapping[str, object]) -> None:

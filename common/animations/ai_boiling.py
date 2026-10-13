@@ -14,8 +14,8 @@ class Boiling(SpatialAnimation):
     DIFFUSION_RANGE = (0.1, 0.3)
     BUBBLE_LIMIT_RANGE = (20, 40)
     PARAMETER_DEFAULTS = {
-        "cooling": COOLING_RANGE,
-        "diffusion": DIFFUSION_RANGE,
+        "cooling_range": COOLING_RANGE,
+        "diffusion_range": DIFFUSION_RANGE,
         "bubble_limit": BUBBLE_LIMIT_RANGE,
     }
 
@@ -25,9 +25,9 @@ class Boiling(SpatialAnimation):
     def _initialise_effect(self, _parameters):
 
         effect_parameters = self._load_effect_parameters(_parameters, self.name)
-        self.cooling_range = effect_parameters["cooling"]
-        self.diffusion_range = effect_parameters["diffusion"]
-        self.bubble_limit_range = effect_parameters["bubble_limit"]
+        self.cooling_range = effect_parameters["cooling_range"]
+        self.diffusion_range = effect_parameters["diffusion_range"]
+        self.bubble_limit_range = effect_parameters["bubble_limit_range"]
 
         self.neighbors = []
         for index, point in enumerate(self.positions):
@@ -69,7 +69,7 @@ class Boiling(SpatialAnimation):
 
     @classmethod
     def _load_effect_parameters(cls, parameters, effect_name):
-        configured = super()._load_effect_parameters(
+        configured = super()._merge_effect_parameters(
             parameters, 
             effect_name,
             cls.PARAMETER_DEFAULTS,

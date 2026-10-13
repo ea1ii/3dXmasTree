@@ -12,10 +12,6 @@
     "token_env": "XMAS_AGENT_TOKEN"
   },
   "led": {
-    "test_count": 1000,
-    "pin": "D18",
-    "brightness": 0.5,
-    "pixel_order": "GRB",
     "capture_test_led_count": 100,
     "maxLEDdist": 120.0,
     "simulated_tree_height_mm": 1200
@@ -36,7 +32,7 @@
     "tree_luminosity_percent": 100,
     "tree_transparency_percent": 90,
     "background_luminosity_percent": 29,
-    "positions_file": "pc_agent/frames/20261004_2012/positions_20261004_2012.json"
+    "positions_file": "pc_agent/frames/20261003_1415/positions_20261003_1415.json"
   },
   "night_schedule": {
     "latitude": 50.9283333333,

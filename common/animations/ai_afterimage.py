@@ -52,7 +52,7 @@ class Afterimage(SpatialAnimation):
 
     @classmethod
     def _load_effect_parameters(cls, parameters, effect_name):
-        configured = super()._load_effect_parameters(
+        configured = super()._merge_effect_parameters(
             parameters,
             effect_name,
             cls.PARAMETER_DEFAULTS,
