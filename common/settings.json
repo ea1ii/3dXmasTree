@@ -15,7 +15,7 @@
     "test_count": 1000,
     "pin": "D18",
     "brightness": 0.5,
-    "pixel_order": "GRB",
+    "pixel_order": "RGB",
     "capture_test_led_count": 100,
     "maxLEDdist": 120.0,
     "simulated_tree_height_mm": 1200
