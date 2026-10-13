@@ -35,8 +35,8 @@ class SnakeAnimation(Animation):
         self.running = True
         self._begin_cycle()
 
-    def _estimate_led_spacing(self):
-        return super()._estimate_led_spacing(fallback=1.0)
+    def _estimate_led_spacing(self, fallback=None):
+        return super()._estimate_led_spacing(fallback=1.0 if fallback is None else fallback)
 
     def _random_color(self):
         hue = self.generator.random()

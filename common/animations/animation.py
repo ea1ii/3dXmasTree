@@ -36,7 +36,8 @@ class Animation(ABC):
             minimum_exclusive: Whether the minimum value is exclusive. Defaults to False.
 
         Returns:
-            A tuple containing the validated minimum and maximum values.
+            A tuple containing the validated minimum and maximum values, each an int
+            if its raw value was an int, otherwise a float.
 
         Raises:
             ValueError: If the raw value is not a valid range.
@@ -47,7 +48,10 @@ class Animation(ABC):
             or len(raw_value) != 2
         ):
             raise ValueError(f"{name} must contain two numbers")
-        values = tuple(float(value) for value in raw_value)
+        values = tuple(
+            value if isinstance(value, int) and not isinstance(value, bool) else float(value)
+            for value in raw_value
+        )
         minimum, maximum = values
         minimum_valid = minimum > lower_bound if minimum_exclusive else minimum >= lower_bound
         if (
@@ -84,7 +88,7 @@ class Animation(ABC):
         
     # Loads the effect parameters, combining defaults, sidecar, and overrides.
     @classmethod
-    def _load_effect_parameters(cls, parameters, effect_name, defaults, sidecar_path):
+    def _merge_effect_parameters(cls, parameters, effect_name, defaults, sidecar_path):
         """
         Loads the effect parameters, combining defaults, sidecar, and overrides.
 
@@ -248,7 +252,7 @@ class Animation(ABC):
         self.running = True
 
     @abstractmethod
-    def _initialise_effect(self, parameters: Mapping[str, object]) -> None:
+    def _initialise_effect(self, parameters: Mapping[str, object], /) -> None:
         """Initialize effect-specific state after shared setup."""
 
     # Performs any necessary cleanup when the animation is stopped.

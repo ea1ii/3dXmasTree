@@ -1803,7 +1803,7 @@ class CalibrationImageView(QLabel):
     def mouseReleaseEvent(self, event):
         if self.dragging and event.button() == Qt.MouseButton.LeftButton:
             self.dragging = False
-            position = self._image_position(event.position())
+            position = self._image_position(event.position()) or self.crosshair_position
             if position is not None:
                 self.crosshair_position = position
                 self.update()
@@ -2004,15 +2004,27 @@ class CalibrationPage(QDialog):
         fit_layout.addWidget(self.axis_offset_label)
         right_layout.addLayout(fit_layout)
 
-        self.points_table = QTableWidget(0, 6, right_panel)
+        self.points_table = QTableWidget(0, 7, right_panel)
         self.points_table.setHorizontalHeaderLabels(
-            ("LED", "X mm", "Y mm", "Z mm", "Match mm", "Status")
+            ("LED", "X mm", "Y mm", "Z mm", "Match mm", "Status", "Dist. prev mm")
         )
         self.points_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
         self.points_table.currentCellChanged.connect(self._table_selection_changed)
+        self.table_headers = (
+            "LED", "X mm", "Y mm", "Z mm", "Match mm", "Status", "Dist. prev mm"
+        )
+        self.table_sort = None
+        self.led_distances = []
+        header = self.points_table.horizontalHeader()
+        header.setSectionsClickable(True)
+        header.sectionClicked.connect(self._sort_table_by_column)
         right_layout.addWidget(self.points_table, 3)
+        self.distance_summary_label = QLabel("")
+        self.distance_summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        right_layout.addWidget(self.distance_summary_label)
+        self.max_distance_spin.valueChanged.connect(self._update_distance_summary)
         workspace.addWidget(right_panel, 2)
 
         self.status_label = QLabel("Detecting the brightest spot in each frame...")
@@ -2193,9 +2205,64 @@ class CalibrationPage(QDialog):
             f"count CV {occupancy['count_cv']:.2f}; "
             f"{occupancy['outside_points']} points outside cone."
         )
+        self.led_distances = [None] + [
+            math.dist(
+                (point["x"], point["y"], point["z"]),
+                (previous["x"], previous["y"], previous["z"]),
+            )
+            for previous, point in zip(self.points, self.points[1:])
+        ]
+        self._update_distance_summary()
+        self._populate_points_table()
+        self._refresh_all_views()
+        self._refresh_3d_points()
+
+    def _update_distance_summary(self, *_args):
+        distances = [d for d in self.led_distances if d is not None]
+        if not distances:
+            self.distance_summary_label.setText("")
+            return
+        self.distance_summary_label.setText(
+            f"Distance mm: min {min(distances):.1f} | max {max(distances):.1f} | "
+            f"avg {sum(distances) / len(distances):.1f} | "
+            f"limit {self.max_distance_spin.value():.1f}"
+        )
+
+    def _sort_table_by_column(self, column):
+        if self.table_sort and self.table_sort[0] == column:
+            self.table_sort = (column, not self.table_sort[1])
+        else:
+            self.table_sort = (column, True)
+        self._populate_points_table()
+
+    def _populate_points_table(self):
+        order = list(range(len(self.points)))
+        labels = list(self.table_headers)
+        if self.table_sort:
+            column, ascending = self.table_sort
+            labels[column] += " \u25b2" if ascending else " \u25bc"
+
+            def key(i):
+                point = self.points[i]
+                return (
+                    point["index"],
+                    point["x"],
+                    point["y"],
+                    point["z"],
+                    point["match_error_mm"],
+                    self._point_status(point),
+                    -1.0 if self.led_distances[i] is None else self.led_distances[i],
+                )[column]
+
+            order.sort(key=key, reverse=not ascending)
+        self.points_table.setHorizontalHeaderLabels(labels)
+        self.points_table.blockSignals(True)
         self.points_table.setRowCount(len(self.points))
-        for row, point in enumerate(self.points):
-            status = "Adjusted" if point["adjusted"] else "Matched" if point["valid"] else "Mismatch"
+        for row, i in enumerate(order):
+            point = self.points[i]
+            status = self._point_status(point)
+            distance = self.led_distances[i]
+            distance_text = "" if distance is None else f"{distance:.1f}"
             values = (
                 str(point["index"]),
                 f"{point['x']:.1f}",
@@ -2203,14 +2270,28 @@ class CalibrationPage(QDialog):
                 f"{point['z']:.1f}",
                 f"{point['match_error_mm']:.1f}",
                 status,
+                distance_text,
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                item.setData(Qt.ItemDataRole.UserRole, i)
                 self.points_table.setItem(row, column, item)
-        self.points_table.selectRow(self.current_frame_index)
-        self._refresh_all_views()
-        self._refresh_3d_points()
+        self.points_table.blockSignals(False)
+        self._select_table_row(self.current_frame_index)
+
+    @staticmethod
+    def _point_status(point):
+        if point["adjusted"]:
+            return "Adjusted"
+        return "Matched" if point["valid"] else "Mismatch"
+
+    def _select_table_row(self, frame_index):
+        for row in range(self.points_table.rowCount()):
+            item = self.points_table.item(row, 0)
+            if item and item.data(Qt.ItemDataRole.UserRole) == frame_index:
+                self.points_table.selectRow(row)
+                return
 
     def _refresh_all_views(self):
         led_index = self.led_indices[self.current_frame_index]
@@ -2245,6 +2326,14 @@ class CalibrationPage(QDialog):
         detection = self.detections[view][led_index]
         detection["x"] = x
         detection["y"] = y
+        opposite = {"front": "back", "back": "front", "left": "right", "right": "left"}[view]
+        for other in CALIBRATION_VIEWS:
+            if other == view:
+                continue
+            target = self.detections[other][led_index]
+            target["y"] = y / detection["height"] * target["height"]
+            if other == opposite:
+                target["x"] = (1 - x / detection["width"]) * target["width"]
         self._recalculate()
     def _refresh_view(self, view):
         if self.detections is not None:
@@ -2262,12 +2351,16 @@ class CalibrationPage(QDialog):
         )
         if self.detections is not None:
             self._refresh_all_views()
-            self.points_table.selectRow(self.current_frame_index)
+            self._select_table_row(self.current_frame_index)
             self._refresh_3d_points()
 
     def _table_selection_changed(self, row, *_args):
-        if 0 <= row < len(self.led_indices) and row != self.current_frame_index:
-            self.current_frame_index = row
+        item = self.points_table.item(row, 0) if row >= 0 else None
+        if item is None:
+            return
+        frame_index = item.data(Qt.ItemDataRole.UserRole)
+        if 0 <= frame_index < len(self.led_indices) and frame_index != self.current_frame_index:
+            self.current_frame_index = frame_index
             self._refresh_all_views()
             self._refresh_3d_points()
 
