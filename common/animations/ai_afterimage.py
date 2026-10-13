@@ -88,16 +88,16 @@ class Afterimage(SpatialAnimation):
         radius_center_range = cls._read_range(
             configured["radius_center_range"],
             "radius_center_range",
-            0.58,
-            0.82,
+            0.01,
+            1.0,
             minimum_exclusive=True,
         )
 
         radius_swing_range = cls._read_range(
             configured["radius_swing_range"],
             "radius_swing_range",
-            0.1,
-            0.18,
+            0.01,
+            0.5,
             minimum_exclusive=True,
         )
 

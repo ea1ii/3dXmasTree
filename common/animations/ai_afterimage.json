@@ -1,7 +1,7 @@
 {
   "traveler_count": 10,
-  "angular_speed_range": [
-    0.06,
-    0.6
-  ]
+  "angular_speed_range": [0.06, 0.6],
+  "height_speed_range": [0.22, 1.5],
+  "radius_center_range": [0.58, 0.82],
+  "radius_swing_range": [0.1, 0.18]
 }

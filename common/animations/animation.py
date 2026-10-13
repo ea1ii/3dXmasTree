@@ -24,16 +24,16 @@ class Animation(ABC):
 
     # Reads a numeric range from the raw value, ensuring it falls within the specified bounds.
     @staticmethod
-    def _read_range(raw_value, name, lower_bound, upper_bound, minimum_exclusive=False):
+    def _read_range(raw_value, name, lower_bound = 0.0, upper_bound = math.inf, minimum_exclusive=False):
         """
         Reads a numeric range from the raw value, ensuring it falls within the specified bounds.
 
         Args:
             raw_value: The raw input value to read.
             name: The name of the parameter (for error messages).
-            lower_bound: The minimum allowed value.
-            upper_bound: The maximum allowed value.
-            minimum_exclusive: Whether the minimum value is exclusive.
+            lower_bound: The minimum allowed value. Defaults to 0.0.
+            upper_bound: The maximum allowed value. Defaults to infinity.
+            minimum_exclusive: Whether the minimum value is exclusive. Defaults to False.
 
         Returns:
             A tuple containing the validated minimum and maximum values.
