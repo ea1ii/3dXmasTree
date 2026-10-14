@@ -29,7 +29,7 @@ The agent checks that it is running on the configured Pi hostname. Run it in an 
 
 ## Animation Engine
 
-`3dXmasTree.py` discovers concrete `Animation` subclasses recursively in `common/animations` and cycles through them. Each animation runs for 10 seconds by default at a 30 FPS target; it receives elapsed time through `doframe(dt)`. The engine owns frame pacing and strip output. Animations must not sleep in `doframe`.
+`3dXmasTree.py` discovers concrete `Animation` subclasses recursively in `common/animations` and cycles through them in random order (use `--no-random` for alphabetical order). Each animation runs for 10 seconds by default at a 30 FPS target; it receives elapsed time through `doframe(dt)`. The engine owns frame pacing and strip output. Animations must not sleep in `doframe`.
 
 General engine defaults live in `common/settings.json` under `animation`: `fps` and `seconds_per_animation`. Command-line `--fps` and `--seconds-per-animation` override them for a run.
 
@@ -39,7 +39,11 @@ The `3dXmasTree.sh` launcher creates or reuses `pi_agent/.venv`, scans `common/a
 ./pi_agent/3dXmasTree.sh
 ```
 
-Useful options are `--list-animations`, `--once ANIMATION`, `--fps 60`, `--seconds-per-animation 5`, and `--hardware`. In hardware mode, calibrate and set `led.led_count` first. Without `-Hardware`, the engine uses the simulated strip and defaults to `led.capture_test_led_count`.
+Useful options are `--list-animations`, `--once ANIMATION`, `--fps 60`, `--seconds-per-animation 5`, `--no-random`, `--sync-clock [SECONDS]`, `--choose-positions`, and `--hardware`. In hardware mode, calibrate and set `led.led_count` first. Without `--hardware`, the engine uses the simulated strip and defaults to `led.capture_test_led_count`.
+
+`--no-random` plays animations in alphabetical order instead of random order; with `--night-schedule` it steps through the regular animations in that order. `--sync-clock` waits at startup (60 seconds by default, or the given number) for `timedatectl` to report the system clock as NTP-synchronised, then continues with a warning if it is not. It does not set the clock.
+
+In an interactive terminal, `Ctrl+N` skips to the next animation (ignored with `--once`), and `Ctrl+Q` or `Ctrl+F4` stops the engine.
 
 ### Night Schedule
 

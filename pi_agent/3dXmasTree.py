@@ -7,6 +7,7 @@ import json
 import math
 import pkgutil
 import random
+import subprocess
 import sys
 import threading
 import time
@@ -321,6 +322,7 @@ def run_night_schedule(
     animation_parameters,
     stop_event,
     once=False,
+    randomize=True,
 ):
     animation_by_name = {animation.name: animation for animation in animations}
     special_names = {name for name in (opening_animation, closing_animation) if name}
@@ -329,6 +331,7 @@ def run_night_schedule(
     ]
     failed_animations = set()
     chooser = random.Random()
+    sequence_index = 0
     announced_sunset = None
 
     while not stop_event.is_set():
@@ -383,8 +386,13 @@ def run_night_schedule(
                     return
                 stop_event.wait(min((night_end - now).total_seconds(), 60.0))
                 continue
+            if randomize:
+                selected_animation = chooser.choice(available)
+            else:
+                selected_animation = available[sequence_index % len(available)]
+                sequence_index += 1
             play_scheduled_animation(
-                chooser.choice(available),
+                selected_animation,
                 strip,
                 led_count,
                 fps,
@@ -418,6 +426,33 @@ def run_night_schedule(
         if once:
             break
 
+# Waits for the system clock to be NTP-synchronised; the night schedule depends on correct time
+def wait_for_clock_sync(timeout_seconds):
+    deadline = time.monotonic() + timeout_seconds
+    print(f"Waiting up to {timeout_seconds:g}s for clock synchronisation...", flush=True)
+    while True:
+        try:
+            result = subprocess.run(
+                ["timedatectl", "show", "-p", "NTPSynchronized", "--value"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            print(f"Clock sync check unavailable: {error}", file=sys.stderr, flush=True)
+            print(f"Clock sync check failed at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}", file=sys.stderr, flush=True)
+            return False
+        if result.stdout.strip() == "yes":
+            print("Clock is synchronised.", flush=True)
+            print(f"Clock sync check passed at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}", flush=True)
+            return True
+        if time.monotonic() >= deadline:
+            print("Clock not synchronised; continuing anyway.", file=sys.stderr, flush=True)
+            print(f"Clock sync check failed at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}", file=sys.stderr, flush=True)
+            return False
+        time.sleep(1.0)
+
+
 # Entry point for the Pi agent, handling command-line arguments and initializing the LED animations
 def main():
     require_platform("pi")
@@ -446,6 +481,21 @@ def main():
         help="Run opening, random night, and closing animations based on local sunrise/sunset.",
     )
     parser.add_argument(
+        "--sync-clock",
+        nargs="?",
+        type=float,
+        const=60.0,
+        default=None,
+        metavar="SECONDS",
+        help="At startup, wait up to SECONDS (default 60) for the system clock to be NTP-synchronised.",
+    )
+    parser.add_argument(
+        "--no-random",
+        action="store_false",
+        dest="random",
+        help="Play animations in alphabetical order instead of random order.",
+    )
+    parser.add_argument(
         "--once",
         metavar="ANIMATION",
         help="Play only this animation until Ctrl+Q (or Ctrl+F4) is pressed.",
@@ -471,6 +521,10 @@ def main():
         parser.error("--fps must be a finite positive number")
     if not math.isfinite(seconds_per_animation) or seconds_per_animation <= 0:
         parser.error("--seconds-per-animation must be a finite positive number")
+    if args.sync_clock is not None:
+        if not math.isfinite(args.sync_clock) or args.sync_clock <= 0:
+            parser.error("--sync-clock must be a finite positive number")
+        wait_for_clock_sync(args.sync_clock)
 
     animations, import_failures = discover_animations()
     for module_name, message in import_failures:
@@ -575,6 +629,7 @@ def main():
                 args.seconds_per_animation,
                 {"positions": animation_positions} if animation_positions else None,
                 stop_event,
+                randomize=args.random,
             )
         elif once_animation is not None:
             print(
@@ -595,7 +650,8 @@ def main():
                 return cycles_completed
         else:
             while not stop_event.is_set():
-                for animation_class in animations:
+                playlist = random.sample(animations, len(animations)) if args.random else animations
+                for animation_class in playlist:
                     if stop_event.is_set():
                         break
                     if animation_class.name in failed_animations:
