@@ -83,7 +83,7 @@ def _is_ctrl_f4(sequence):
 	)
 
 
-def _watch_posix_exit_keys(on_exit, stop_event):
+def _watch_posix_exit_keys(on_exit, stop_event, on_next=None):
 	import termios
 
 	file_descriptor = sys.stdin.fileno()
@@ -105,6 +105,10 @@ def _watch_posix_exit_keys(on_exit, stop_event):
 			key = os.read(file_descriptor, 1)
 			if key == b"\x11":
 				break
+			if key == b"\x0e":
+				if on_next is not None:
+					on_next()
+				continue
 			if key != b"\x1b":
 				continue
 
@@ -128,7 +132,7 @@ def _watch_posix_exit_keys(on_exit, stop_event):
 	on_exit()
 
 
-def _watch_windows_exit_keys(on_exit, stop_event):
+def _watch_windows_exit_keys(on_exit, stop_event, on_next=None):
 	import ctypes
 	import msvcrt
 
@@ -136,6 +140,10 @@ def _watch_windows_exit_keys(on_exit, stop_event):
 		key = msvcrt.getwch()
 		if key == "\x11":
 			break
+		if key == "\x0e":
+			if on_next is not None:
+				on_next()
+			continue
 		if key not in ("\x00", "\xe0"):
 			continue
 		msvcrt.getwch()
@@ -150,12 +158,12 @@ def _watch_windows_exit_keys(on_exit, stop_event):
 
 
 class ExitKeyMonitor:
-	def __init__(self, on_exit):
+	def __init__(self, on_exit, on_next=None):
 		self.stop_event = threading.Event()
 		watcher = _watch_windows_exit_keys if os.name == "nt" else _watch_posix_exit_keys
 		self.thread = threading.Thread(
 			target=watcher,
-			args=(on_exit, self.stop_event),
+			args=(on_exit, self.stop_event, on_next),
 			daemon=True,
 		)
 		self.thread.start()
@@ -165,8 +173,8 @@ class ExitKeyMonitor:
 		self.thread.join(timeout=0.5)
 
 
-def start_exit_key_monitor(on_exit):
+def start_exit_key_monitor(on_exit, on_next=None):
 	if not sys.stdin.isatty():
 		return None
 
-	return ExitKeyMonitor(on_exit)
+	return ExitKeyMonitor(on_exit, on_next)

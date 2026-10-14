@@ -24,7 +24,10 @@ from common.animations import Animation
 from common.agent_client import save_settings
 from led_controller import NeoPixelStrip, SimulatedStrip
 
+# Set by Ctrl+N to end the running animation early.
+SKIP_EVENT = threading.Event()
 
+# Functions for discovering animations, validating frames, and loading animation positions
 def discover_animations():
     import common.animations as animation_package
 
@@ -54,7 +57,7 @@ def discover_animations():
 
     return [discovered[name] for name in sorted(discovered)], failures
 
-
+# Validates a single animation frame against the expected LED count and RGB channel constraints
 def validate_frame(frame, led_count):
     colors = list(frame)
     if len(colors) != led_count:
@@ -73,6 +76,7 @@ def validate_frame(frame, led_count):
     return validated
 
 
+# Loads the 3D positions of LEDs from a JSON file, ensuring the correct number of positions
 def load_animation_positions(led_count, settings=None):
     frame_root = PROJECT_ROOT / "pc_agent" / "frames"
     preferred_file = (settings or {}).get("simulation", {}).get("positions_file", "")
@@ -113,6 +117,7 @@ def load_animation_positions(led_count, settings=None):
     return None
 
 
+# Allows the user to choose a positions file from the available options
 def choose_positions_file(settings):
     frame_root = PROJECT_ROOT / "pc_agent" / "frames"
     position_files = sorted(
@@ -157,7 +162,7 @@ def choose_positions_file(settings):
     print(f"Saved positions file: {settings['simulation']['positions_file']}")
     return True
 
-
+# Runs an animation for the specified duration, handling frame timing and stop events
 def run_animation(
     animation_class,
     strip,
@@ -170,6 +175,7 @@ def run_animation(
     animation = animation_class()
     initialized = False
     frames_rendered = 0
+    SKIP_EVENT.clear()
     try:
         animation.initialise(led_count, animation_parameters or {})
         initialized = True
@@ -180,7 +186,7 @@ def run_animation(
 
         while not stop_event.is_set():
             now = time.monotonic()
-            if now - started_at >= duration_seconds:
+            if now - started_at >= duration_seconds or SKIP_EVENT.is_set():
                 break
 
             delta_seconds = max(0.0, now - previous_frame_at)
@@ -204,7 +210,7 @@ def run_animation(
 
     return frames_rendered
 
-
+# Executes an animation and handles any errors that occur during its execution
 def execute_animation(
     animation_class,
     strip,
@@ -235,6 +241,7 @@ def execute_animation(
     return frames_rendered, None
 
 
+# Determines the duration for a scheduled animation, considering any overrides
 def scheduled_animation_duration(
     animation_class,
     default_duration,
@@ -245,6 +252,7 @@ def scheduled_animation_duration(
     return getattr(animation_class, "duration_seconds", default_duration)
 
 
+# Plays a scheduled animation, respecting the night schedule and handling failures
 def play_scheduled_animation(
     animation_class,
     strip,
@@ -299,6 +307,7 @@ def play_scheduled_animation(
         )
 
 
+# Runs the night schedule, executing opening, regular, and closing animations as appropriate
 def run_night_schedule(
     animations,
     schedule,
@@ -409,11 +418,17 @@ def run_night_schedule(
         if once:
             break
 
-
+# Entry point for the Pi agent, handling command-line arguments and initializing the LED animations
 def main():
     require_platform("pi")
     parser = argparse.ArgumentParser(
-        description="Cycle installed LED animations on the Raspberry Pi."
+        description="Cycle installed LED animations on the Raspberry Pi.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "keys (interactive terminal):\n"
+            "  Ctrl+N          skip to the next animation (ignored with --once)\n"
+            "  Ctrl+Q, Ctrl+F4 stop the engine"
+        ),
     )
     parser.add_argument("--hardware", action="store_true", help="Drive the physical LED strip.")
     parser.add_argument("--fps", type=float, default=None)
@@ -469,6 +484,8 @@ def main():
                 f"{animation_class.name} v{animation_class.version} "
                 f"by {animation_class.author}: {animation_class.description}"
             )
+        print()  # Add a blank line after listing animations for readability
+        print(f"Total animations found: {len(animations)}")
         return 0
 
     once_animation = None
@@ -532,7 +549,10 @@ def main():
         strip = SimulatedStrip(led_count, pixel_order)
 
     stop_event = threading.Event()
-    exit_monitor = start_exit_key_monitor(stop_event.set)
+    exit_monitor = start_exit_key_monitor(
+        stop_event.set,
+        None if once_animation is not None else SKIP_EVENT.set,
+    )
     cycles_completed = 0
     failed_animations = set()
     print(
