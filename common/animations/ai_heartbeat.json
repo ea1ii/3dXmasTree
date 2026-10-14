@@ -1,0 +1,8 @@
+{
+  "period_seconds": 1.4,
+  "expand_seconds": 0.15,
+  "collapse_seconds": 0.7,
+  "sphere_radius_fraction": 0.3,
+  "base_glow": 0.05,
+  "peak_glow": 0.3
+}

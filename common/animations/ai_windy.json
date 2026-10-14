@@ -1,0 +1,12 @@
+{
+  "rotation_seconds": 15.0,
+  "plane_width_degrees": 30,
+  "plane_brightness": 0.85,
+  "trail_brightness": 0.5,
+  "sparks_per_second": 4,
+  "spark_rise_seconds": 0.08,
+  "spark_fade_seconds_range": [
+    1.0,
+    4.0
+  ]
+}
