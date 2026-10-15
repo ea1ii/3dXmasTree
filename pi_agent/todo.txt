@@ -1,0 +1,1 @@
+sudo XMAS_AGENT_TOKEN="$(cat ~/.config/3dXmasTree/agent-token)" .venv/bin/python agent_server.py --hardware
