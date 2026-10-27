@@ -56,4 +56,8 @@ fi
 
 export XMAS_AGENT_TOKEN="$TOKEN"
 echo "Starting Pi agent in $([[ "$USE_HARDWARE" -eq 1 ]] && echo hardware || echo simulation) mode..."
+# rpi_ws281x needs root for DMA/mailbox access.
+if [[ "$USE_HARDWARE" -eq 1 && "$EUID" -ne 0 ]]; then
+    exec sudo -E "$PYTHON" "$SCRIPT_DIR/agent_server.py" "$@"
+fi
 exec "$PYTHON" "$SCRIPT_DIR/agent_server.py" "$@"
