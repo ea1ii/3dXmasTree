@@ -933,17 +933,29 @@ class LengthSetupDialog(QDialog):
         layout.addWidget(self.image_label, 1)
 
         button_layout = QHBoxLayout()
-        self.previous_button = QPushButton("Previous")
-        self.next_button = QPushButton("Next")
+        self.reverse_10_button = QPushButton("−10")
+        self.reverse_5_button = QPushButton("−5")
+        self.previous_button = QPushButton("−1")
+        self.next_button = QPushButton("+1")
+        self.forward_5_button = QPushButton("+5")
+        self.forward_10_button = QPushButton("+10")
         self.done_button = QPushButton("Done")
         self.abort_button = QPushButton("Abort")
-        self.previous_button.clicked.connect(self._previous)
-        self.next_button.clicked.connect(self._next)
+        self.reverse_10_button.clicked.connect(lambda: self._step(-10))
+        self.reverse_5_button.clicked.connect(lambda: self._step(-5))
+        self.previous_button.clicked.connect(lambda: self._step(-1))
+        self.next_button.clicked.connect(lambda: self._step(1))
+        self.forward_5_button.clicked.connect(lambda: self._step(5))
+        self.forward_10_button.clicked.connect(lambda: self._step(10))
         self.done_button.clicked.connect(self._done)
         self.abort_button.clicked.connect(self._abort)
         for button in (
+            self.reverse_10_button,
+            self.reverse_5_button,
             self.previous_button,
             self.next_button,
+            self.forward_5_button,
+            self.forward_10_button,
             self.done_button,
             self.abort_button,
         ):
@@ -958,14 +970,23 @@ class LengthSetupDialog(QDialog):
 
     def _set_busy(self, busy):
         self.busy = busy
-        self.previous_button.setEnabled(
-            not busy and self.test_active and self.current_led > 1
-        )
-        self.next_button.setEnabled(
-            not busy
-            and self.test_active
-            and self.current_led < self.settings["led"]["test_count"]
-        )
+        for amount, button in (
+            (-10, self.reverse_10_button),
+            (-5, self.reverse_5_button),
+            (-1, self.previous_button),
+            (1, self.next_button),
+            (5, self.forward_5_button),
+            (10, self.forward_10_button),
+        ):
+            button.setEnabled(
+                not busy
+                and self.test_active
+                and (
+                    self.current_led > 1
+                    if amount < 0
+                    else self.current_led < self.settings["led"]["test_count"]
+                )
+            )
         self.done_button.setEnabled(not busy and self.test_active)
         self.abort_button.setEnabled(not busy)
 
@@ -1005,14 +1026,23 @@ class LengthSetupDialog(QDialog):
         self._set_busy(False)
         callback(result)
 
-    def _capture_for_step(self, endpoint):
-        status = request_json(
-            "pi",
-            endpoint,
-            self.settings,
-            method="POST",
-            payload={},
-        )
+    def _capture_for_step(self, endpoint, steps=1):
+        status = None
+        for _ in range(steps):
+            status = request_json(
+                "pi",
+                endpoint,
+                self.settings,
+                method="POST",
+                payload={},
+            )
+            can_continue = (
+                status["can_next"]
+                if endpoint.endswith("/next")
+                else status["can_previous"]
+            )
+            if not can_continue:
+                break
         try:
             image = request_image("laptop", "/capture", self.settings)
         except Exception:
@@ -1039,15 +1069,10 @@ class LengthSetupDialog(QDialog):
             self._show_step,
         )
 
-    def _next(self):
+    def _step(self, amount):
+        endpoint = "/length-test/next" if amount > 0 else "/length-test/previous"
         self._run_operation(
-            lambda: self._capture_for_step("/length-test/next"),
-            self._show_step,
-        )
-
-    def _previous(self):
-        self._run_operation(
-            lambda: self._capture_for_step("/length-test/previous"),
+            lambda: self._capture_for_step(endpoint, abs(amount)),
             self._show_step,
         )
 
