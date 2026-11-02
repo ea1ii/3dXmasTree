@@ -1081,8 +1081,8 @@ class LengthSetupDialog(QDialog):
             self._show_step,
         )
 
-    def _set_fill_mode(self, state):
-        fill_up_to_current = state == int(Qt.CheckState.Checked)
+    def _set_fill_mode(self, _state=None):
+        fill_up_to_current = self.fill_leds_checkbox.isChecked()
         self._run_operation(
             lambda: request_json(
                 "pi",
