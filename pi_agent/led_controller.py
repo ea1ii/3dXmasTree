@@ -1,3 +1,7 @@
+import re
+
+print(f"led_controller loaded from {__file__}: hardware driver = rpi_ws281x")
+
 PIXEL_ORDERS = ("RGB", "RBG", "GRB", "GBR", "BRG", "BGR")
 
 
@@ -52,48 +56,87 @@ class SimulatedStrip:
         self.clear()
 
 
-class NeoPixelStrip:
-    def __init__(self, led_count, pin_name, brightness, pixel_order):
+# GPIO -> PWM channel on Pi 4 and earlier.
+PWM_CHANNELS = {12: 0, 18: 0, 13: 1, 19: 1}
+
+
+# Model -> signal frequency in Hz (rpi_ws281x only drives 3-channel RGB strips here).
+STRIP_MODELS = {
+    "WS2811": 800000,
+    "WS2812": 800000,
+    "WS2812B": 800000,
+    "SK6812": 800000,
+    "WS2811_400K": 400000,
+}
+#DEFAULT_STRIP_MODEL = "WS2812B" # test strip model for GRB order and D13 pin
+DEFAULT_STRIP_MODEL = "WS2812B" 
+
+
+def _pack(color):
+    return (int(color[0]) << 16) | (int(color[1]) << 8) | int(color[2])
+
+
+class Ws281xStrip:
+    def __init__(
+        self,
+        led_count,
+        pin_name,
+        brightness,
+        pixel_order,
+        strip_model=DEFAULT_STRIP_MODEL,
+    ):
         try:
-            import board
-            import neopixel
+            from rpi_ws281x import PixelStrip, ws
         except ImportError as error:
             raise RuntimeError(
-                "Hardware mode requires Adafruit Blinka and CircuitPython NeoPixel; "
+                "Hardware mode requires rpi_ws281x; "
                 "install pi_agent/requirements.txt on the Pi."
             ) from error
 
-        pin = getattr(board, pin_name, None)
-        order = getattr(neopixel, pixel_order, None)
-        if pin is None:
-            raise ValueError(f"Unknown board pin: {pin_name}")
-        if order is None:
+        print(f"LED driver: rpi_ws281x, model {strip_model}, order {pixel_order}, pin {pin_name}, led count {led_count}, brightness {brightness}")
+        match = re.fullmatch(r"D?(\d+)", str(pin_name))
+        strip_type = getattr(ws, f"WS2811_STRIP_{pixel_order}", None)
+        if strip_model not in STRIP_MODELS:
+            raise ValueError(
+                f"Unsupported strip model: {strip_model}; "
+                f"choose from {', '.join(STRIP_MODELS)}"
+            )
+        if match is None:
+            raise ValueError(f"Unknown GPIO pin: {pin_name}")
+        if strip_type is None:
             raise ValueError(f"Unsupported pixel order: {pixel_order}")
+        gpio = int(match.group(1))
 
-        self.pixels = neopixel.NeoPixel(
-            pin,
+        self.pixels = PixelStrip(
             led_count,
-            brightness=brightness,
-            auto_write=False,
-            pixel_order=order,
+            gpio,
+            freq_hz=STRIP_MODELS.get(strip_model, 800000),
+            brightness=max(0, min(255, round(brightness * 255))),
+            channel=PWM_CHANNELS.get(gpio, 0),
+            strip_type=strip_type,
         )
+        self.pixels.begin()
+        self.led_count = led_count
 
     def fill(self, color):
-        self.pixels.fill(color)
+        packed = _pack(color)
+        for index in range(self.led_count):
+            self.pixels.setPixelColor(index, packed)
         self.pixels.show()
 
     def set_one(self, index, color):
-        if not 0 <= index < len(self.pixels):
+        if not 0 <= index < self.led_count:
             raise IndexError("LED index is outside the configured test range")
-        self.pixels.fill((0, 0, 0))
-        self.pixels[index] = color
+        for position in range(self.led_count):
+            self.pixels.setPixelColor(position, 0)
+        self.pixels.setPixelColor(index, _pack(color))
         self.pixels.show()
 
     def set_frame(self, frame):
-        if len(frame) != len(self.pixels):
+        if len(frame) != self.led_count:
             raise ValueError("Frame length must match the configured LED count")
         for index, color in enumerate(frame):
-            self.pixels[index] = tuple(color)
+            self.pixels.setPixelColor(index, _pack(color))
         self.pixels.show()
 
     def clear(self):
@@ -101,4 +144,3 @@ class NeoPixelStrip:
 
     def close(self):
         self.clear()
-        self.pixels.deinit()

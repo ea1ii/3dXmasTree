@@ -1,2 +1,1 @@
-adafruit-blinka>=8.0
-adafruit-circuitpython-neopixel>=6.3
+rpi_ws281x>=5.0

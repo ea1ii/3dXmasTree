@@ -6,7 +6,7 @@
 | --- | --- |
 | `agent_server.sh` | Launcher for the agent server: sets up the venv, stores the shared token, and starts `agent_server.py`. |
 | `agent_server.py` | HTTP agent the command center calls for LED setup (color-order test and strip-length calibration); saves results to `common/settings.json`. |
-| `led_controller.py` | LED strip drivers: `NeoPixelStrip` (hardware) and `SimulatedStrip`, plus the supported pixel orders. |
+| `led_controller.py` | LED strip drivers: `Ws281xStrip` (hardware) and `SimulatedStrip`, plus the supported pixel orders. |
 | `3dXmasTree.sh` | Launcher for the animation engine: sets up the venv and animation dependencies, then starts `3dXmasTree.py`. |
 | `3dXmasTree.py` | Animation engine: discovers animations in `common/animations`, paces frames, and cycles them or runs them on a night schedule. |
 | `night_schedule.py` | Computes sunset-to-sunrise windows (`NightSchedule`) used by the engine's `--night-schedule` mode. |

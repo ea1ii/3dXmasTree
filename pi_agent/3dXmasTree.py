@@ -23,7 +23,7 @@ sys.path.insert(0, str(PI_AGENT_DIR))
 from common.Xmas_shared import require_platform, start_exit_key_monitor
 from common.animations import Animation
 from common.agent_client import save_settings
-from led_controller import NeoPixelStrip, SimulatedStrip
+from led_controller import DEFAULT_STRIP_MODEL, Ws281xStrip, SimulatedStrip
 
 # Set by Ctrl+N to end the running animation early.
 SKIP_EVENT = threading.Event()
@@ -593,11 +593,12 @@ def main():
     pixel_order = led_settings.get("pixel_order") or "GRB"
 
     if args.hardware:
-        strip = NeoPixelStrip(
+        strip = Ws281xStrip(
             led_count,
             led_settings["pin"],
             led_settings["brightness"],
             pixel_order,
+            strip_model=led_settings.get("strip_model", DEFAULT_STRIP_MODEL),
         )
     else:
         strip = SimulatedStrip(led_count, pixel_order)

@@ -20,7 +20,7 @@ if __name__ == "__main__":
 
 from common.agent_client import load_settings, save_settings
 from common.Xmas_shared import start_exit_key_monitor
-from led_controller import NeoPixelStrip, PIXEL_ORDERS, SimulatedStrip
+from led_controller import DEFAULT_STRIP_MODEL, Ws281xStrip, PIXEL_ORDERS, SimulatedStrip
 
 
 class ColorTest:
@@ -42,11 +42,12 @@ class ColorTest:
     def _create_strip(self):
         led_settings = self.settings["led"]
         if self.hardware:
-            self.strip = NeoPixelStrip(
+            self.strip = Ws281xStrip(
                 led_settings["test_count"],
                 led_settings["pin"],
                 led_settings["brightness"],
                 self.TEST_PIXEL_ORDER,
+                strip_model=led_settings.get("strip_model", DEFAULT_STRIP_MODEL),
             )
         else:
             self.strip = SimulatedStrip(
@@ -136,11 +137,12 @@ class LengthTest:
 
         pixel_order = led_settings.get("pixel_order") or "GRB"
         if self.hardware:
-            self.strip = NeoPixelStrip(
+            self.strip = Ws281xStrip(
                 test_count,
                 led_settings["pin"],
                 led_settings["brightness"],
                 pixel_order,
+                strip_model=led_settings.get("strip_model", DEFAULT_STRIP_MODEL),
             )
         else:
             self.strip = SimulatedStrip(test_count, pixel_order)
@@ -215,11 +217,12 @@ class PositionCaptureTest:
 
         pixel_order = led_settings.get("pixel_order") or "GRB"
         if self.hardware:
-            self.strip = NeoPixelStrip(
+            self.strip = Ws281xStrip(
                 self.led_count,
                 led_settings["pin"],
                 led_settings["brightness"],
                 pixel_order,
+                strip_model=led_settings.get("strip_model", DEFAULT_STRIP_MODEL),
             )
         else:
             self.strip = SimulatedStrip(self.led_count, pixel_order)

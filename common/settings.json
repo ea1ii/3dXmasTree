@@ -12,8 +12,8 @@
     "token_env": "XMAS_AGENT_TOKEN"
   },
   "led": {
-    "test_count": 1000,
-    "pin": "D18",
+    "test_count": 300,
+    "pin": "D13",
     "brightness": 0.5,
     "pixel_order": "RGB",
     "capture_test_led_count": 100,
