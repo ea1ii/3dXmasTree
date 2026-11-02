@@ -926,6 +926,10 @@ class LengthSetupDialog(QDialog):
         self.number_label.setStyleSheet("font-size: 28px; font-weight: bold;")
         layout.addWidget(self.number_label)
 
+        self.fill_leds_checkbox = QCheckBox("Light LEDs 1 through the current LED")
+        self.fill_leds_checkbox.stateChanged.connect(self._set_fill_mode)
+        layout.addWidget(self.fill_leds_checkbox)
+
         self.image_label = QLabel("Waiting for laptop camera...")
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setMinimumSize(520, 300)
@@ -987,6 +991,7 @@ class LengthSetupDialog(QDialog):
                     else self.current_led < self.settings["led"]["test_count"]
                 )
             )
+        self.fill_leds_checkbox.setEnabled(not busy and self.test_active)
         self.done_button.setEnabled(not busy and self.test_active)
         self.abort_button.setEnabled(not busy)
 
@@ -1075,6 +1080,26 @@ class LengthSetupDialog(QDialog):
             lambda: self._capture_for_step(endpoint, abs(amount)),
             self._show_step,
         )
+
+    def _set_fill_mode(self, state):
+        fill_up_to_current = state == int(Qt.CheckState.Checked)
+        self._run_operation(
+            lambda: request_json(
+                "pi",
+                "/length-test/fill-mode",
+                self.settings,
+                method="POST",
+                payload={"fill_up_to_current": fill_up_to_current},
+            ),
+            self._fill_mode_updated,
+        )
+
+    def _fill_mode_updated(self, status):
+        self.current_led = status["current_led"]
+        self.fill_leds_checkbox.blockSignals(True)
+        self.fill_leds_checkbox.setChecked(status["fill_up_to_current"])
+        self.fill_leds_checkbox.blockSignals(False)
+        self._set_busy(False)
 
     def _show_step(self, result):
         status, image = result

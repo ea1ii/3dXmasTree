@@ -126,6 +126,7 @@ class LengthTest:
         self.hardware = hardware
         self.strip = None
         self.current_led = None
+        self.fill_up_to_current = False
 
     def start(self):
         if self.current_led is not None:
@@ -148,13 +149,35 @@ class LengthTest:
             self.strip = SimulatedStrip(test_count, pixel_order)
 
         self.current_led = 1
-        self.strip.set_one(0, (255, 255, 255))
+        self.fill_up_to_current = False
+        self._show_current_led()
+        return self.status()
+
+    def _show_current_led(self):
+        if self.fill_up_to_current:
+            self.strip.set_frame(
+                [
+                    (255, 255, 255) if index < self.current_led else (0, 0, 0)
+                    for index in range(self.settings["led"]["test_count"])
+                ]
+            )
+        else:
+            self.strip.set_one(self.current_led - 1, (255, 255, 255))
+
+    def set_fill_mode(self, fill_up_to_current):
+        if self.current_led is None:
+            raise RuntimeError("No LED length test is running")
+        if not isinstance(fill_up_to_current, bool):
+            raise ValueError("fill_up_to_current must be a boolean")
+        self.fill_up_to_current = fill_up_to_current
+        self._show_current_led()
         return self.status()
 
     def status(self):
         return {
             "current_led": self.current_led,
             "test_count": self.settings["led"]["test_count"],
+            "fill_up_to_current": self.fill_up_to_current,
             "can_previous": self.current_led > 1,
             "can_next": self.current_led < self.settings["led"]["test_count"],
         }
@@ -165,7 +188,7 @@ class LengthTest:
         if self.current_led >= self.settings["led"]["test_count"]:
             raise ValueError("Reached led.test_count; increase it to test farther")
         self.current_led += 1
-        self.strip.set_one(self.current_led - 1, (255, 255, 255))
+        self._show_current_led()
         return self.status()
 
     def previous(self):
@@ -174,7 +197,7 @@ class LengthTest:
         if self.current_led <= 1:
             raise ValueError("LED 1 is the first LED")
         self.current_led -= 1
-        self.strip.set_one(self.current_led - 1, (255, 255, 255))
+        self._show_current_led()
         return self.status()
 
     def done(self):
@@ -197,6 +220,7 @@ class LengthTest:
             self.strip.close()
             self.strip = None
         self.current_led = None
+        self.fill_up_to_current = False
 
 
 class PositionCaptureTest:
@@ -303,6 +327,8 @@ def make_handler(color_test, token, length_test=None, position_test=None):
                     result = length_test.next()
                 elif self.path == "/length-test/previous" and length_test is not None:
                     result = length_test.previous()
+                elif self.path == "/length-test/fill-mode" and length_test is not None:
+                    result = length_test.set_fill_mode(payload.get("fill_up_to_current"))
                 elif self.path == "/length-test/done" and length_test is not None:
                     result = length_test.done()
                 elif self.path == "/length-test/abort" and length_test is not None:
